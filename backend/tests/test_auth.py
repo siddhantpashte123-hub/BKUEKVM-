@@ -96,6 +96,26 @@ def test_login_history_recorded(admin_client):
     assert any(row["success"] for row in resp.json())
 
 
+def test_csrf_middleware_blocks_mutating_requests(admin_client, monkeypatch):
+    from app.config import settings
+
+    # Simulate a production deployment for this test only
+    monkeypatch.setattr(settings, "csrf_enabled", True)
+    monkeypatch.setattr(type(settings), "is_dev", property(lambda self: False))
+
+    # No double-submit token -> blocked even on auth routes
+    blocked = admin_client.post("/api/auth/logout")
+    assert blocked.status_code == 403
+
+    # Valid token echoed from the cookie -> allowed
+    csrf = admin_client.cookies.get("bluekvm_csrf")
+    allowed = admin_client.post("/api/auth/logout", headers={"X-CSRF-Token": csrf})
+    assert allowed.status_code == 200
+
+    # Safe methods stay untouched
+    assert admin_client.get("/api/auth/me").status_code == 401  # session was logged out
+
+
 def test_revoked_session_cannot_be_used(admin_client, db):
     sessions = admin_client.get("/api/auth/sessions").json()
     target = next(s for s in sessions if not s["current"])

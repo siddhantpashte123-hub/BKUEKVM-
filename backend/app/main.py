@@ -11,6 +11,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .deps import CSRF_COOKIE, CSRF_HEADER, SAFE_METHODS
+from .security import constant_time_equals
 from .virtualization.base import HypervisorError
 
 from . import __version__
@@ -80,6 +82,24 @@ app = FastAPI(
 )
 
 # Same-origin deployment: do not add wildcard CORS. Cookies are SameSite=Lax.
+@app.middleware("http")
+async def csrf_protection(request: Request, call_next):
+    """Stateless double-submit CSRF check covering EVERY mutating route."""
+    exempt_paths = {"/api/auth/login"}  # no cookie exists before authentication
+    if (
+        settings.csrf_enabled
+        and not settings.is_dev
+        and request.method not in SAFE_METHODS
+        and request.url.path not in exempt_paths
+        and not request.url.path.startswith("/health")
+    ):
+        cookie_token = request.cookies.get(CSRF_COOKIE, "")
+        header_token = request.headers.get(CSRF_HEADER, "")
+        if not cookie_token or not header_token or not constant_time_equals(cookie_token, header_token):
+            return JSONResponse(status_code=403, content={"detail": "CSRF token missing or invalid"})
+    return await call_next(request)
+
+
 for module in (
     health, auth, dashboard, vps, nodes, templates, networks, storage,
     backups, users, logs, monitoring, settings_api,
