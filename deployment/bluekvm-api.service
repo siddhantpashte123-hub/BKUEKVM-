@@ -1,0 +1,25 @@
+[Unit]
+Description=BLUEKVM PANNEL API and web dashboard
+Documentation=https://github.com/siddhantpashte123-hub/BKUEKVM-
+After=network-online.target postgresql.service libvirtd.service virtqemud.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bluekvm
+Group=libvirt
+WorkingDirectory=/opt/bluekvm/backend
+EnvironmentFile=/opt/bluekvm/.env
+Environment=BLUEKVM_EMBEDDED_WORKER=0
+ExecStart=/opt/bluekvm/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips=127.0.0.1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/bluekvm /var/log/bluekvm
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
