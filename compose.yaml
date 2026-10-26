@@ -1,0 +1,50 @@
+# BLUEKVM PANNEL — container deployment.
+# NOTE: creating KVM VMs from a container requires a host exposing /dev/kvm,
+# libvirt access and the capabilities shown below. On hosts without nested
+# virtualization, run the panel in a container and register an external
+# KVM-capable node through the web UI.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bluekvm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-strong-password}
+      POSTGRES_DB: bluekvm
+    volumes:
+      - bluekvm_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bluekvm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgresql+psycopg://bluekvm:${POSTGRES_PASSWORD:-change-me-strong-password}@db:5432/bluekvm
+      BLUEKVM_SECRET_KEY: ${BLUEKVM_SECRET_KEY:?set a 64-char hex secret}
+      BLUEKVM_CREDENTIAL_KEY: ${BLUEKVM_CREDENTIAL_KEY:?set a Fernet key}
+      BLUEKVM_ADMIN_USERNAME: ${BLUEKVM_ADMIN_USERNAME:-admin}
+      BLUEKVM_ADMIN_PASSWORD: ${BLUEKVM_ADMIN_PASSWORD:?set a strong admin password}
+      BLUEKVM_COOKIE_SECURE: "0"
+    volumes:
+      - bluekvm_data:/var/lib/bluekvm
+      - bluekvm_logs:/var/log/bluekvm
+      # Bind libvirt socket for same-host KVM management (Linux host)
+      - /var/run/libvirt:/var/run/libvirt
+    devices:
+      - /dev/kvm:/dev/kvm
+    group_add:
+      - libvirt
+
+volumes:
+  bluekvm_pgdata:
+  bluekvm_data:
+  bluekvm_logs:

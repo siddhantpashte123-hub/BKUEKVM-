@@ -1,0 +1,81 @@
+# Troubleshooting
+
+## Installer
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `Port 8080 is already in use` | Another service occupies the port | `ss -ltnp | grep 8080`, stop it or change `BLUEKVM_PORT` |
+| `KVM: no VMX/SVM extensions exposed` | Nested virtualization disabled | Enable nested virt on the host, or register an external KVM node |
+| `libvirt rejected connection` | Permissions / daemon not running | `systemctl enable --now libvirtd`; ensure the `bluekvm` user is in the `libvirt` group |
+| Health check never ready | Migration or dependency failure | `journalctl -u bluekvm-api -n 200` |
+
+## Services
+
+```bash
+systemctl status bluekvm-api bluekvm-worker
+journalctl -u bluekvm-api -f
+tail -f /var/log/bluekvm/bluekvm.log
+```
+
+Restart safely:
+
+```bash
+sudo systemctl restart bluekvm-worker bluekvm-api
+```
+
+## Database
+
+- Verify connectivity: `curl -s localhost:8080/health/ready`.
+- Apply migrations manually:
+  ```bash
+  cd /opt/bluekvm/backend && . .venv/bin/activate && alembic upgrade head
+  ```
+- Never edit database rows by hand while the worker is running; pause
+  `bluekvm-worker` first.
+
+## VPS provisioning
+
+- **`Template is not ready`** — download and verify the image under *OS Templates*.
+  A checksum mismatch marks the template `verification_failed` and blocks all VMs.
+- **`No KVM-capable online node`** — no registered node reports `/dev/kvm` access.
+  Check *System Monitoring → Service health* and run *Verify connection* on the node.
+- **Task stuck in `queued`** — the worker is stopped: `systemctl status bluekvm-worker`.
+- **Task failed mid-provisioning** — open *Background Tasks* for step-level logs.
+  The VM is marked `error`; fix the cause and use *Reinstall OS* or delete and recreate.
+- **VM created but won't boot** — open the noVNC console; cloud-init seed failures appear
+  on the serial console. Confirm the template image boots standalone.
+
+## Console
+
+- **Close code 4401** — console token expired or was already consumed; reconnect to mint
+  a fresh single-use token.
+- **4503 / cannot reach VNC** — the QEMU VNC port isn't listening on localhost yet; wait
+  for the domain to finish starting, or check `virsh domxml <name>`.
+- **Black screen** — the guest may be at a text console or rebooting; send
+  Ctrl+Alt+Del from the console toolbar.
+- Browsers forbid headers on WebSocket handshakes, hence the short-lived token query
+  parameter; tokens live 60 seconds and are bound to one user and one VPS.
+
+## Networking
+
+- Guests with no DHCP lease: confirm the libvirt network is active
+  (`virsh net-list --all`) and the bridge name matches the node's network.
+- The panel never edits the host's primary network configuration automatically.
+  Bridged networking requires an existing host bridge (e.g. `br0`).
+
+## Resetting administrator access
+
+```bash
+cd /opt/bluekvm/backend && . .venv/bin/activate
+python - <<'PY'
+from app.database import SessionLocal
+from app.models import User
+from app.security import hash_password
+db = SessionLocal()
+u = db.query(User).filter(User.username == 'admin').one()
+u.password_hash = hash_password('New!StrongPass123')
+db.commit(); print('password reset')
+PY
+```
+
+All other sessions are revoked the next time the password is changed through the UI.
