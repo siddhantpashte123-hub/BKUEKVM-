@@ -118,6 +118,54 @@ else
   echo "FAIL: ensure_service_groups returned non-zero"; FAIL=$((FAIL + 1))
 fi
 
+echo "== container hypervisor profile =="
+TMP_CONF="$(mktemp -d)"
+cat > "$TMP_CONF/qemu.conf" <<'EOF'
+# default package config
+#user = "libvirt-qemu"
+EOF
+# Not a container -> no modification
+BLUEKVM_QEMU_CONF="$TMP_CONF/qemu.conf" configure_container_hypervisor
+if ! grep -q "BLUEKVM container override" "$TMP_CONF/qemu.conf"; then
+  echo "PASS: container profile skipped on non-container hosts"; PASS=$((PASS + 1))
+else
+  echo "FAIL: container profile applied outside a container"; FAIL=$((FAIL + 1))
+fi
+# Forced container -> idempotent override exactly once
+BLUEKVM_FORCE_CONTAINER=1 BLUEKVM_QEMU_CONF="$TMP_CONF/qemu.conf" configure_container_hypervisor
+BLUEKVM_FORCE_CONTAINER=1 BLUEKVM_QEMU_CONF="$TMP_CONF/qemu.conf" configure_container_hypervisor
+if [ "$(grep -c 'user = "root"' "$TMP_CONF/qemu.conf")" = "1" ]; then
+  echo "PASS: qemu.conf override applied once and idempotently"; PASS=$((PASS + 1))
+else
+  echo "FAIL: qemu.conf override missing or duplicated"; FAIL=$((FAIL + 1))
+fi
+# qemu_group honours the conf's group directive
+if [ "$(BLUEKVM_QEMU_CONF="$TMP_CONF/qemu.conf" qemu_group)" = "root" ]; then
+  echo "PASS: qemu_group parses qemu.conf"; PASS=$((PASS + 1))
+else
+  echo "FAIL: qemu_group did not resolve root from qemu.conf"; FAIL=$((FAIL + 1))
+fi
+
+echo "== storage permission preparation =="
+TMP_STORE="$(mktemp -d)"
+mkdir -p "$TMP_STORE/vms/vm1" "$TMP_STORE/templates"
+touch "$TMP_STORE/vms/vm1/disk.qcow2"
+DATA_DIR="$TMP_STORE" BLUEKVM_QEMU_CONF="$TMP_CONF/qemu.conf" prepare_storage_permissions
+if [ "$(stat -c '%a' "$TMP_STORE/vms/vm1/disk.qcow2")" = "660" ] \
+   && [ "$(( $(stat -c '%a' "$TMP_STORE/vms/vm1") % 1000 ))" = "750" ]; then
+  echo "PASS: storage trees get group-writable 660/2750 perms"; PASS=$((PASS + 1))
+else
+  echo "FAIL: storage permissions wrong: $(stat -c '%a' "$TMP_STORE/vms/vm1/disk.qcow2")"; FAIL=$((FAIL + 1))
+fi
+rm -rf "$TMP_CONF" "$TMP_STORE"
+
+echo "== default network helper is non-fatal without a socket =="
+if ensure_default_network; then
+  echo "PASS: ensure_default_network tolerates missing libvirtd"; PASS=$((PASS + 1))
+else
+  echo "FAIL: ensure_default_network aborted"; FAIL=$((FAIL + 1))
+fi
+
 echo "== installer wiring =="
 grep -q -- '--system-site-packages' "$ROOT/installer/install.sh" \
   && { echo "PASS: venv created with --system-site-packages (libvirt binding visible)"; PASS=$((PASS + 1)); } \
@@ -128,6 +176,15 @@ grep -q 'start_libvirt' "$ROOT/installer/install.sh" \
 grep -q 'ensure_service_groups' "$ROOT/installer/install.sh" \
   && { echo "PASS: installer enrolls service account groups"; PASS=$((PASS + 1)); } \
   || { echo "FAIL: installer does not call ensure_service_groups"; FAIL=$((FAIL + 1)); }
+grep -q 'configure_container_hypervisor' "$ROOT/installer/install.sh" \
+  && { echo "PASS: installer applies container hypervisor profile"; PASS=$((PASS + 1)); } \
+  || { echo "FAIL: installer missing container profile step"; FAIL=$((FAIL + 1)); }
+grep -q 'ensure_default_network' "$ROOT/installer/install.sh" \
+  && { echo "PASS: installer ensures the default NAT network"; PASS=$((PASS + 1)); } \
+  || { echo "FAIL: installer missing default network step"; FAIL=$((FAIL + 1)); }
+grep -q '_spawn_libvirt_daemons' "$ROOT/installer/lib.sh" \
+  && { echo "PASS: lib.sh can spawn daemons without systemd/init"; PASS=$((PASS + 1)); } \
+  || { echo "FAIL: direct daemon spawn fallback missing"; FAIL=$((FAIL + 1)); }
 grep -q 'python3-libvirt' "$ROOT/Dockerfile" \
   && { echo "PASS: Dockerfile installs python3-libvirt"; PASS=$((PASS + 1)); } \
   || { echo "FAIL: Dockerfile missing python3-libvirt"; FAIL=$((FAIL + 1)); }

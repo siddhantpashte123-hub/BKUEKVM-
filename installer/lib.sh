@@ -186,22 +186,98 @@ has_systemd() {
   [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1
 }
 
-# Start the libvirt daemon on both systemd hosts and containers/WSL where
-# only the SysV-style "service" shim is available.
+# Start the libvirt daemon on systemd hosts, SysV-shim hosts, and bare
+# containers that ship neither (e.g. GitHub Codespaces: Ubuntu 24.04 images
+# only contain systemd units, so 'service' reports "unrecognized service").
 start_libvirt() {
+  mkdir -p /run/libvirt /var/run/libvirt 2>/dev/null || true
   if has_systemd; then
     systemctl enable --now libvirtd 2>/dev/null \
       || systemctl enable --now virtqemud 2>/dev/null || true
   elif command -v service >/dev/null 2>&1; then
     service libvirtd start 2>/dev/null || service virtqemud start 2>/dev/null || true
   fi
+
+  if ! _libvirt_socket_present; then
+    _spawn_libvirt_daemons
+  fi
+
   # Give the socket a moment to appear
   local i
-  for i in $(seq 1 10); do
-    [ -S /var/run/libvirt/libvirt-sock ] || [ -S /run/libvirt/libvirt-sock ] && return 0
+  for i in $(seq 1 12); do
+    _libvirt_socket_present && return 0
     sleep 1
   done
+  warn "libvirt socket did not appear — VM provisioning will stay blocked until libvirtd runs"
   return 0
+}
+
+_libvirt_socket_present() {
+  [ -S /var/run/libvirt/libvirt-sock ] || [ -S /run/libvirt/libvirt-sock ]
+}
+
+# Last-resort manual daemon startup used in init-less containers. Tries the
+# monolithic libvirtd first, then the modular virt* daemons (noble default).
+_spawn_libvirt_daemons() {
+  if command -v libvirtd >/dev/null 2>&1; then
+    libvirtd -d 2>/dev/null || nohup libvirtd >/var/log/libvirtd-manual.log 2>&1 &
+    sleep 1
+  fi
+  local d
+  for d in virtlogd virtlockd virtnodedevd virtnetworkd virtstoraged virtqemud virtproxyd; do
+    if command -v "$d" >/dev/null 2>&1 && ! pgrep -x "$d" >/dev/null 2>&1; then
+      "$d" --daemon 2>/dev/null || nohup "$d" >"/var/log/${d}-manual.log" 2>&1 &
+    fi
+  done
+}
+
+# In containers without systemd/polkit the unprivileged libvirt-qemu account
+# often cannot open /dev/ptmx or storage files. Running QEMU as root matches
+# the single-tenant trust model of such test containers. On real systemd
+# hosts this is intentionally NOT applied (dynamic DAC handles permissions).
+configure_container_hypervisor() {
+  is_container || return 0
+  local conf="${BLUEKVM_QEMU_CONF:-/etc/libvirt/qemu.conf}"
+  [ -f "$conf" ] || return 0
+  if grep -q "BLUEKVM container override" "$conf" 2>/dev/null; then
+    return 0
+  fi
+  cat >> "$conf" <<'EOF'
+
+# BLUEKVM container override: restrictive devpts/DAC in init-less containers
+# blocks the unprivileged libvirt-qemu account (PTY creation, storage access).
+# Do not use on multi-tenant or systemd-managed production hosts.
+user = "root"
+group = "root"
+EOF
+  # Relax devpts so QEMU can allocate serial PTYs (best effort; some
+  # containers forbid remount and that is fine with type=user networking).
+  mount -o remount,ptmxmode=0666 /dev/pts 2>/dev/null || true
+  ok "Container hypervisor profile applied (QEMU runs as root inside container)"
+}
+
+# Define + start the standard 'default' NAT network so freshly provisioned
+# VMs receive DHCP leases. Best effort: unprivileged containers may lack
+# CAP_NET_ADMIN, in which case the driver's type=user fallback still works.
+ensure_default_network() {
+  command -v virsh >/dev/null 2>&1 || return 0
+  _libvirt_socket_present || return 0
+  if ! virsh -c qemu:///system net-info default >/dev/null 2>&1; then
+    cat >/tmp/bluekvm-default-net.xml <<'XML'
+<network>
+  <name>default</name>
+  <forward mode='nat'/>
+  <bridge name='virbr0' stp='on' delay='0'/>
+  <ip address='192.168.122.1' netmask='255.255.255.0'>
+    <dhcp><range start='192.168.122.2' end='192.168.122.254'/></dhcp>
+  </ip>
+</network>
+XML
+    virsh -c qemu:///system net-define /tmp/bluekvm-default-net.xml >/dev/null 2>&1 || true
+    rm -f /tmp/bluekvm-default-net.xml
+  fi
+  virsh -c qemu:///system net-autostart default >/dev/null 2>&1 || true
+  virsh -c qemu:///system net-start default >/dev/null 2>&1 || true
 }
 
 # Grant the panel account access to libvirt and /dev/kvm. Distributions name
@@ -214,6 +290,36 @@ ensure_service_groups() {
     if getent group "$grp" >/dev/null 2>&1; then
       usermod -aG "$grp" bluekvm 2>/dev/null || true
     fi
+  done
+}
+
+# Resolve the group QEMU runs as from qemu.conf, falling back to the common
+# distribution names. Echoes the group name; empty when nothing matches.
+qemu_group() {
+  local conf="${BLUEKVM_QEMU_CONF:-/etc/libvirt/qemu.conf}" name
+  if [ -f "$conf" ]; then
+    name="$(sed -n 's/^[[:space:]]*group[[:space:]]*=[[:space:]]*["'\'']\?\([^"'\'']*\).*/\1/p' "$conf" | tail -1)"
+    [ -n "$name" ] && getent group "$name" >/dev/null 2>&1 && { echo "$name"; return 0; }
+  fi
+  for name in libvirt-qemu kvm libvirt; do
+    getent group "$name" >/dev/null 2>&1 && { echo "$name"; return 0; }
+  done
+  return 0
+}
+
+# Give the hypervisor group read/write access to VM storage. On systemd hosts
+# libvirt dynamic DAC already handles this, so this is a belt-and-braces step
+# that makes init-less containers work without manual chgrp/chmod.
+prepare_storage_permissions() {
+  local grp
+  grp="$(qemu_group)"
+  [ -n "$grp" ] || return 0
+  local dir
+  for dir in "$DATA_DIR/vms" "$DATA_DIR/templates" "$DATA_DIR/backups"; do
+    [ -d "$dir" ] || continue
+    chgrp -R "$grp" "$dir" 2>/dev/null || true
+    find "$dir" -type d -exec chmod 2750 {} + 2>/dev/null || true
+    find "$dir" -type f -exec chmod 660 {} + 2>/dev/null || true
   done
 }
 
@@ -233,6 +339,7 @@ verify_libvirt_binding() {
 }
 
 is_container() {
+  [ "${BLUEKVM_FORCE_CONTAINER:-}" = "1" ] && return 0
   [ -f /.dockerenv ] || grep -qE '(docker|containerd|kubepods|lxc)' /proc/1/cgroup 2>/dev/null
 }
 

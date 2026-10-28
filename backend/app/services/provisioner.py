@@ -27,6 +27,7 @@ from ..models import (
     VPS,
     VPSStatus,
 )
+from ..security import decrypt_secret
 from ..virtualization.base import HypervisorError, KVMUnavailableError, VMSpec
 from ..virtualization.manager import manager
 from .template_service import ensure_ready
@@ -168,6 +169,14 @@ def _provision_vps(db: Session, task: Task) -> None:
     set_progress(task, 20)
 
     add_step(task, "create_disk", "running")
+    # Decrypt the VM credential only here, inside the worker, for the
+    # cloud-init seed — it never crosses the API boundary.
+    cloud_password = ""
+    if vps.init_password_encrypted:
+        try:
+            cloud_password = decrypt_secret(vps.init_password_encrypted)
+        except ValueError:
+            cloud_password = ""
     spec = VMSpec(
         name=vps.name,
         hostname=vps.hostname,
@@ -178,6 +187,8 @@ def _provision_vps(db: Session, task: Task) -> None:
         libvirt_network=settings.default_network,
         bridge=settings.default_bridge,
         ssh_public_key=vps.ssh_public_key,
+        cloud_init_user=vps.cloud_init_user or "ubuntu",
+        cloud_init_password=cloud_password,
         storage_dir=settings.vm_storage_dir if node.is_local else f"{settings.vm_storage_dir}/node-{node.id}",
         mac_address=vps.mac_address,
     )

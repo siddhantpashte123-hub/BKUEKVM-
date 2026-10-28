@@ -51,6 +51,9 @@ export interface VPS {
   node_name?: string
   template_name?: string
   ssh_public_key?: string
+  cloud_init_user?: string
+  has_password?: boolean
+  generated_password?: string | null
   stats?: Record<string, unknown> | null
 }
 

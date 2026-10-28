@@ -26,6 +26,7 @@ from ..models import (
 )
 from ..schemas import (
     ConsoleSessionOut,
+    GuestIpOut,
     LifecycleRequest,
     Message,
     TaskOut,
@@ -33,7 +34,14 @@ from ..schemas import (
     VPSDetailOut,
     VPSOut,
 )
-from ..security import console_expiry, generate_token, hash_token
+from ..security import (
+    console_expiry,
+    decrypt_secret,
+    encrypt_secret,
+    generate_password,
+    generate_token,
+    hash_token,
+)
 from ..services.audit import record_audit
 from ..virtualization.manager import manager
 
@@ -41,12 +49,17 @@ router = APIRouter(prefix="/api/vps", tags=["vps"])
 
 
 # --------------------------------------------------------------- helpers --
-def _serialize(vps: VPS, stats: dict | None = None) -> VPSDetailOut:
+def _serialize(vps: VPS, stats: dict | None = None, generated_password: str | None = None) -> VPSDetailOut:
     data = {c.name: getattr(vps, c.name) for c in vps.__table__.columns}
     data["status"] = vps.status.value if hasattr(vps.status, "value") else vps.status
     data["node_name"] = vps.node.name if vps.node else ""
     data["template_name"] = vps.template.name if vps.template else ""
     data["stats"] = stats
+    data["has_password"] = bool(vps.init_password_encrypted)
+    # Never serialize the ciphertext; the transient generated value is only
+    # ever present on the single create response that mints it.
+    data.pop("init_password_encrypted", None)
+    data["generated_password"] = generated_password
     return VPSDetailOut(**data)
 
 
@@ -153,6 +166,14 @@ def create_vps(
         # Fail fast with an honest message when no node can host the VM
         node = manager.find_placement(db, payload.vcpus, payload.ram_mb, payload.disk_gb)
 
+    # Credentials: an explicit wizard password wins; otherwise generate a
+    # strong random one and hand it back exactly once in this response.
+    generated_password = ""
+    plain_password = payload.cloud_init_password.strip()
+    if not plain_password:
+        plain_password = generate_password()
+        generated_password = plain_password
+
     vps = VPS(
         name=payload.name,
         hostname=payload.hostname,
@@ -167,6 +188,8 @@ def create_vps(
         ip_address=payload.ip_address,
         mac_address=payload.mac_address,
         ssh_public_key=payload.ssh_public_key.strip(),
+        cloud_init_user="ubuntu",
+        init_password_encrypted=encrypt_secret(plain_password),
         expires_at=payload.expires_at,
         idempotency_key=payload.idempotency_key,
         status=VPSStatus.PENDING,
@@ -180,7 +203,7 @@ def create_vps(
         resource_id=vps.public_id, ip_address=client_ip(request),
         details={"name": vps.name, "vcpus": vps.vcpus, "ram_mb": vps.ram_mb, "disk_gb": vps.disk_gb},
     )
-    return _serialize(vps)
+    return _serialize(vps, generated_password=generated_password or None)
 
 
 @router.get("/{public_id}", response_model=VPSDetailOut)
@@ -301,7 +324,8 @@ def create_console_session(
     token = generate_token()
     expires = console_expiry(60)
     session = ConsoleSession(
-        token_hash=hash_token(token), vps_id=vps.id, user_id=user.id, expires_at=expires
+        token_hash=hash_token(token), vps_id=vps.id, user_id=user.id,
+        expires_at=expires, kind="vnc",
     )
     db.add(session)
     db.commit()
@@ -309,5 +333,78 @@ def create_console_session(
                  resource_id=vps.public_id, ip_address=client_ip(request))
     return ConsoleSessionOut(
         console_token=token, vps_id=vps.id, expires_at=expires,
-        ws_path=f"/ws/console?token={token}",
+        ws_path=f"/ws/console?token={token}", kind="vnc",
+    )
+
+
+@router.post("/{public_id}/ssh-session", response_model=ConsoleSessionOut)
+def create_ssh_session(
+    public_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("vps:read")),
+):
+    """Mint a single-use token for the browser SSH terminal (/ws/ssh)."""
+    vps = _get_visible(request, db, user, public_id)
+    if not can_access_vps(request, user, vps):
+        raise HTTPException(403, "Not authorized for this VPS console")
+    if vps.status not in (VPSStatus.RUNNING,):
+        raise HTTPException(409, "VPS is not running — start it before opening SSH")
+    if not vps.init_password_encrypted:
+        raise HTTPException(
+            409,
+            "This VPS has no stored password; the browser terminal needs a "
+            "provisioned credential (public-key-only VMs are not supported here)",
+        )
+    token = generate_token()
+    expires = console_expiry(60)
+    session = ConsoleSession(
+        token_hash=hash_token(token), vps_id=vps.id, user_id=user.id,
+        expires_at=expires, kind="ssh",
+    )
+    db.add(session)
+    db.commit()
+    record_audit(db, action="ssh.open", user_id=user.id, resource_type="vps",
+                 resource_id=vps.public_id, ip_address=client_ip(request))
+    return ConsoleSessionOut(
+        console_token=token, vps_id=vps.id, expires_at=expires,
+        ws_path=f"/ws/ssh?token={token}", kind="ssh",
+    )
+
+
+@router.get("/{public_id}/guest-ip", response_model=GuestIpOut)
+def guest_ip(
+    public_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(require_permission("vps:read")),
+):
+    """Return the guest IPv4 address, discovering it via agent/DHCP leases."""
+    vps = _get_visible(request, db, user, public_id)
+    driver = manager.get_driver(vps.node)
+    ip = vps.ip_address or ""
+    source = "cached" if ip else ""
+    try:
+        fresh = driver.get_guest_ip(vps.name, vps.mac_address)
+    except Exception as exc:  # driver errors must not 500 the UI
+        fresh = ""
+        discovery_error = str(exc)
+    else:
+        discovery_error = ""
+    if fresh:
+        ip, source = fresh, "discovered"
+        if fresh != vps.ip_address:
+            vps.ip_address = fresh
+            db.commit()
+    if not ip:
+        detail = (
+            "Guest IP address is not available yet. Wait for DHCP lease / "
+            "qemu-guest-agent, then retry."
+        )
+        if discovery_error:
+            detail = f"{detail} ({discovery_error})"
+        raise HTTPException(409, detail)
+    return GuestIpOut(
+        ip_address=ip, source=source, ssh_port=22,
+        username=vps.cloud_init_user or "ubuntu",
     )

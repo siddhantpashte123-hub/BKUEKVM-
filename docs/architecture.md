@@ -46,12 +46,22 @@ standalone `bluekvm-worker` service in production.
 The hypervisor remains the source of truth for power state; `DriverManager.sync_vps_state`
 reconciles database statuses against libvirt on every lifecycle transition.
 
-### Console
+### Browser terminals
 
-`POST /api/vps/{id}/console-session` (cookie auth + ownership check) mints a 60-second,
-single-use token. The browser opens `/ws/console?token=...`; after validation the server
-opens a TCP connection to the domain's localhost VNC port and pumps binary frames in
-both directions under the `binary` WebSocket subprotocol consumed by noVNC.
+The primary user-facing terminal is **SSH in the browser** (`app/console/ssh_ws.py`):
+
+1. `POST /api/vps/{id}/ssh-session` (cookie auth + ownership check, VPS must be running)
+   mints a 60-second, single-use `kind=ssh` token.
+2. The `/vps/:id/ssh` page opens `/ws/ssh?token=...` with an xterm.js terminal.
+3. After validation the backend discovers the guest IPv4 (qemu-guest-agent, then
+   libvirt DHCP leases) and opens an **asyncssh** connection using the Fernet-encrypted
+   VM password stored at creation. The password never leaves the server.
+4. stdin/stdout and terminal resize events are pumped over the WebSocket; the token is
+   consumed on first use and revoked when the tab closes.
+
+A VNC bridge (`POST /console-session` → `/ws/console`) remains in the backend as an
+emergency recovery path — it connects only to localhost VNC ports — but is no longer
+linked from the UI, which offers the SSH terminal exclusively.
 
 ### Frontend (`frontend/`)
 
@@ -61,7 +71,7 @@ React 18 + TypeScript + Vite + Tailwind, with:
 - Polling hooks for live metrics and task progress, with explicit loading/empty/error
   and disconnected states on every page.
 - A strict black/electric-blue design token system in `tailwind.config.js`.
-- Lazy-loaded noVNC so the console library stays out of the main bundle.
+- xterm.js renders the browser SSH terminal; "Open SSH" always opens a new tab.
 
 ### Data model highlights
 

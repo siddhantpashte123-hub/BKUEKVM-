@@ -3,13 +3,13 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   Activity,
   Cpu,
-  ExternalLink,
   HardDrive,
   MemoryStick,
   Network,
   Play,
   RotateCcw,
   Square,
+  SquareTerminal,
   Trash2,
 } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
@@ -18,7 +18,7 @@ import type { Backup, Task, VPS } from '../lib/types'
 import { Badge, Button, Card, ConfirmDialog, ErrorState, LoadingState, PageHeader, ProgressBar } from '../components/ui'
 import { useAuth } from '../lib/auth'
 
-const TABS = ['Overview', 'Console', 'Network', 'Storage', 'Backups', 'Activity'] as const
+const TABS = ['Overview', 'SSH', 'Network', 'Storage', 'Backups', 'Activity'] as const
 type Tab = (typeof TABS)[number]
 
 interface VmStats {
@@ -129,11 +129,12 @@ export default function VpsDetail() {
         description={`${vps.hostname} · ${vps.template_name ?? ''} · node ${vps.node_name}`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Link to={`/vps/${vps.public_id}/console`}>
-              <Button variant="secondary">
-                <ExternalLink className="h-4 w-4" /> Open Console
-              </Button>
-            </Link>
+            <Button
+              variant="secondary"
+              onClick={() => window.open(`/vps/${vps.public_id}/ssh`, '_blank', 'noopener')}
+            >
+              <SquareTerminal className="h-4 w-4" /> Open SSH
+            </Button>
             {can('vps:manage') && (
               <>
                 <Button variant="secondary" disabled={busy} onClick={() => act('start')}>
@@ -247,17 +248,23 @@ export default function VpsDetail() {
         </div>
       )}
 
-      {tab === 'Console' && (
+      {tab === 'SSH' && (
         <Card>
-          <h3 className="mb-2 font-semibold text-white">Browser console</h3>
+          <h3 className="mb-2 font-semibold text-white">Browser SSH terminal</h3>
           <p className="mb-4 text-sm text-muted">
-            Consoles use a single-use, 60-second token over an authenticated WebSocket. Raw VNC ports are never exposed.
+            Opens an SSH session in a new browser tab over an authenticated WebSocket, using the credential provisioned
+            into this VPS. The password stays encrypted on the panel — it is never sent to your browser. Tokens are
+            single-use and expire in 60 seconds; no raw SSH or VNC port is exposed publicly.
           </p>
-          <Link to={`/vps/${vps.public_id}/console`}>
-            <Button>
-              <ExternalLink className="h-4 w-4" /> Launch noVNC console
-            </Button>
-          </Link>
+          <Button
+            onClick={() => window.open(`/vps/${vps.public_id}/ssh`, '_blank', 'noopener')}
+            disabled={vps.status !== 'running'}
+          >
+            <SquareTerminal className="h-4 w-4" /> Open SSH in new tab
+          </Button>
+          {vps.status !== 'running' && (
+            <p className="mt-3 text-xs text-muted">Start the VPS and wait for a DHCP lease before connecting.</p>
+          )}
         </Card>
       )}
 

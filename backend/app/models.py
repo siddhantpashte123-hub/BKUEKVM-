@@ -246,6 +246,11 @@ class VPS(Base):
     ip_address: Mapped[str] = mapped_column(String(64), default="")
     mac_address: Mapped[str] = mapped_column(String(32), default="")
     ssh_public_key: Mapped[str] = mapped_column(Text, default="")
+    # Cloud-init login user and Fernet-encrypted password. The password is
+    # used only server-side by the browser SSH WebSocket; it is never sent
+    # to the frontend or stored in plaintext.
+    cloud_init_user: Mapped[str] = mapped_column(String(64), default="ubuntu")
+    init_password_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -299,6 +304,8 @@ class ConsoleSession(Base):
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     vps_id: Mapped[int] = mapped_column(ForeignKey("vps.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    # "vnc" = legacy noVNC recovery console, "ssh" = browser SSH terminal
+    kind: Mapped[str] = mapped_column(String(8), default="vnc", server_default="vnc")
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

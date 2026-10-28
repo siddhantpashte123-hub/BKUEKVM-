@@ -14,3 +14,5 @@ websockets==14.1
 cryptography==44.0.0
 email-validator==2.2.0
 PyYAML==6.0.2
+# Pure-Python SSH client for the in-browser terminal (wheels for 3.10-3.13)
+asyncssh==2.24.1

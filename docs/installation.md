@@ -88,8 +88,8 @@ sudo certbot --nginx -d panel.example.com
 ```
 
 Set `BLUEKVM_COOKIE_SECURE=1` (default in production) and set `BLUEKVM_PUBLIC_URL` to
-the HTTPS URL. The nginx config includes the WebSocket upgrade headers the noVNC
-console requires.
+the HTTPS URL. The nginx config includes the WebSocket upgrade headers the
+browser SSH terminal (and the recovery VNC bridge) require.
 
 ## 5. Container deployment
 

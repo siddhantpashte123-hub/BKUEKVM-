@@ -36,6 +36,32 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+# ----------------------------------------------------- generated secrets --
+def generate_password(length: int = 20) -> str:
+    """Return a strong random password guaranteed to span 4 character classes.
+
+    Used for auto-generated VM (and other service) credentials. The symbol
+    set is deliberately shell/SSH friendly — no quotes, backslashes or
+    whitespace — so the value can be pasted into cloud-init and terminals.
+    """
+    import string
+
+    lower = string.ascii_lowercase
+    upper = string.ascii_uppercase
+    digits = string.digits
+    symbols = "!@#%^&*-_=+?"
+    alphabet = lower + upper + digits + symbols
+    while True:
+        value = "".join(secrets.choice(alphabet) for _ in range(length))
+        if (
+            any(c in lower for c in value)
+            and any(c in upper for c in value)
+            and any(c in digits for c in value)
+            and any(c in symbols for c in value)
+        ):
+            return value
+
+
 # ---------------------------------------------------------------- tokens --
 def generate_token() -> str:
     """Opaque, high-entropy session/console token."""

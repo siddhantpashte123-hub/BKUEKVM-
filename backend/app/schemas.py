@@ -109,6 +109,9 @@ class VPSCreate(BaseModel):
     ip_address: str = ""
     mac_address: str = Field(default="", pattern=r"^$|^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$")
     ssh_public_key: str = Field(default="", max_length=8192)
+    # Optional cloud-init password. Blank means the API generates a strong
+    # random one and returns it exactly once in the create response.
+    cloud_init_password: str = Field(default="", max_length=256)
     expires_at: datetime | None = None
     idempotency_key: str | None = Field(default=None, max_length=64)
 
@@ -139,9 +142,14 @@ class VPSOut(BaseModel):
 
 class VPSDetailOut(VPSOut):
     ssh_public_key: str
+    cloud_init_user: str = "ubuntu"
+    # Indicates a stored credential exists; the secret itself is never serialized.
+    has_password: bool = False
     node_name: str = ""
     template_name: str = ""
     stats: dict[str, Any] | None = None
+    # Populated only on the create response, only once, for a generated password.
+    generated_password: str | None = None
 
 
 class LifecycleRequest(BaseModel):
@@ -286,6 +294,14 @@ class ConsoleSessionOut(BaseModel):
     vps_id: int
     expires_at: datetime
     ws_path: str
+    kind: str = "vnc"
+
+
+class GuestIpOut(BaseModel):
+    ip_address: str
+    source: str = ""
+    ssh_port: int = 22
+    username: str = "ubuntu"
 
 
 class SettingUpdate(BaseModel):
