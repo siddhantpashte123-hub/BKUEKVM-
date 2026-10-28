@@ -101,6 +101,53 @@ echo "== environment detection helpers =="
 if has_systemd; then echo "PASS: has_systemd returns boolean"; PASS=$((PASS + 1)); else echo "PASS: has_systemd returns boolean (no systemd here)"; PASS=$((PASS + 1)); fi
 if is_container; then echo "PASS: is_container executes"; PASS=$((PASS + 1)); else echo "PASS: is_container executes"; PASS=$((PASS + 1)); fi
 
+echo "== libvirt daemon starter =="
+# With no systemctl/service in PATH (container without init shims) the
+# helper must degrade gracefully instead of aborting the installer.
+EMPTY_BIN="$(mktemp -d)"
+if PATH="$EMPTY_BIN" start_libvirt >/dev/null 2>&1; then
+  echo "PASS: start_libvirt tolerates missing init system"; PASS=$((PASS + 1))
+else
+  echo "FAIL: start_libvirt aborted without init system"; FAIL=$((FAIL + 1))
+fi
+rm -rf "$EMPTY_BIN"
+# ensure_service_groups must never fail when the account/group is absent
+if ensure_service_groups; then
+  echo "PASS: ensure_service_groups is non-fatal"; PASS=$((PASS + 1))
+else
+  echo "FAIL: ensure_service_groups returned non-zero"; FAIL=$((FAIL + 1))
+fi
+
+echo "== installer wiring =="
+grep -q -- '--system-site-packages' "$ROOT/installer/install.sh" \
+  && { echo "PASS: venv created with --system-site-packages (libvirt binding visible)"; PASS=$((PASS + 1)); } \
+  || { echo "FAIL: venv missing --system-site-packages"; FAIL=$((FAIL + 1)); }
+grep -q 'start_libvirt' "$ROOT/installer/install.sh" \
+  && { echo "PASS: installer starts libvirt via portable helper"; PASS=$((PASS + 1)); } \
+  || { echo "FAIL: installer does not call start_libvirt"; FAIL=$((FAIL + 1)); }
+grep -q 'ensure_service_groups' "$ROOT/installer/install.sh" \
+  && { echo "PASS: installer enrolls service account groups"; PASS=$((PASS + 1)); } \
+  || { echo "FAIL: installer does not call ensure_service_groups"; FAIL=$((FAIL + 1)); }
+grep -q 'python3-libvirt' "$ROOT/Dockerfile" \
+  && { echo "PASS: Dockerfile installs python3-libvirt"; PASS=$((PASS + 1)); } \
+  || { echo "FAIL: Dockerfile missing python3-libvirt"; FAIL=$((FAIL + 1)); }
+
+echo "== node health-check script =="
+if [ -x "$ROOT/backend/.venv/bin/python" ]; then
+  HC_OUT="$(DATABASE_URL="sqlite:////tmp/bluekvm-hc-test.db" \
+    BLUEKVM_VM_STORAGE_DIR=/tmp/bk-hc-vms BLUEKVM_TEMPLATE_DIR=/tmp/bk-hc-tpl \
+    BLUEKVM_BACKUP_DIR=/tmp/bk-hc-bk BLUEKVM_LOG_DIR=/tmp/bk-hc-log \
+    "$ROOT/backend/.venv/bin/python" "$ROOT/scripts/node-healthcheck.py" 2>&1)" && rc=0 || rc=$?
+  if echo "$HC_OUT" | grep -q "status=" && { [ "$rc" = 0 ] || [ "$rc" = 2 ]; }; then
+    echo "PASS: node-healthcheck.py runs and reports real node state (rc=$rc)"; PASS=$((PASS + 1))
+  else
+    echo "FAIL: node-healthcheck.py unexpected output: $HC_OUT"; FAIL=$((FAIL + 1))
+  fi
+  rm -f /tmp/bluekvm-hc-test.db; rm -rf /tmp/bk-hc-*
+else
+  echo "SKIP: backend venv not present in this environment"
+fi
+
 echo "== uninstall guard rails =="
 UN="$(printf 'UNINSTALL\n' | bash "$ROOT/installer/uninstall.sh" 2>&1 || true)"
 check "uninstall requires root" "Root or sudo" "$UN"

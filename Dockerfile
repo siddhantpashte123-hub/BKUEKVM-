@@ -16,6 +16,7 @@ ENV PYTHONUNBUFFERED=1 \
 # KVM tooling needed for real virtualization on a privileged host
 RUN apt-get update && apt-get install -y --no-install-recommends \
         qemu-kvm qemu-utils libvirt-clients libvirt-daemon-system \
+        python3-libvirt \
         genisoimage cloud-image-utils curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
