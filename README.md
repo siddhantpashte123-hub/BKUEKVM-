@@ -33,7 +33,12 @@ The installer displays an interactive menu:
 > verify its checksum, then run the verified `install.sh` locally.
 
 After installation open `http://<server-ip>:8080` and sign in with the administrator
-credentials printed by the installer (no default password is ever shipped).
+credentials printed by the installer (no default password is ever shipped). On an
+interactive terminal the installer prompts for the administrator email and password
+(hidden input + confirmation; blank generates a random one); piped/CI installs can
+pre-seed `BLUEKVM_ADMIN_EMAIL` and `BLUEKVM_ADMIN_PASSWORD`. The installer requires a
+supported Python (3.10–3.13, 3.12 preferred) and selects it automatically — Python 3.14
+is avoided because native dependency wheels are not yet published for it.
 
 ### Requirements
 

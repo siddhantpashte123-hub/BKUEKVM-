@@ -8,6 +8,10 @@
 | `KVM: no VMX/SVM extensions exposed` | Nested virtualization disabled | Enable nested virt on the host, or register an external KVM node |
 | `libvirt rejected connection` | Permissions / daemon not running | `systemctl enable --now libvirtd`; ensure the `bluekvm` user is in the `libvirt` group |
 | Health check never ready | Migration or dependency failure | `journalctl -u bluekvm-api -n 200` |
+| `dpkg was interrupted` | A previous apt run was killed mid-operation | The installer now repairs this automatically; manually: `sudo dpkg --configure -a && sudo apt-get -f install -y` |
+| `error: the configured Python interpreter version (3.14) is newer than PyO3's maximum` | Default `python3` is 3.14, which has no prebuilt wheels for native deps | The installer auto-selects `python3.12`/`python3.11`. If absent: `sudo apt install python3.12 python3.12-venv`, delete the partial venv (`rm -rf /opt/bluekvm/backend/.venv`) and re-run |
+| `fatal: detected dubious ownership in repository` | `/opt/bluekvm` is owned by a different UID (common in containers) | The installer now whitelists the path via `git config --global --add safe.directory /opt/bluekvm` automatically |
+| `"systemd" is not running in this container` | Container image without systemd | The installer detects this and writes `/opt/bluekvm/start-panel.sh` (runs uvicorn with the embedded worker); use it under tmux/supervisord/compose |
 
 ## Services
 

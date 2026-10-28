@@ -6,23 +6,33 @@ import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from cryptography.fernet import Fernet, InvalidToken
-from passlib.context import CryptContext
 
 from .config import settings
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt operates on at most 72 bytes. Longer inputs are pre-hashed with
+# SHA-256 (a well-established pattern) so arbitrary-length passwords still
+# verify deterministically instead of raising inside the crypto library.
+_BCRYPT_MAX_BYTES = 72
+
+
+def _prepare(password: str) -> bytes:
+    raw = password.encode("utf-8")
+    if len(raw) > _BCRYPT_MAX_BYTES:
+        raw = hashlib.sha256(raw).hexdigest().encode("ascii")
+    return raw
 
 
 # ------------------------------------------------------------- passwords --
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_prepare(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(password: str, password_hash: str) -> bool:
     try:
-        return pwd_context.verify(password, password_hash)
-    except ValueError:
+        return bcrypt.checkpw(_prepare(password), password_hash.encode("utf-8"))
+    except (ValueError, TypeError):
         return False
 
 
