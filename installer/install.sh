@@ -90,11 +90,12 @@ do_install() {
     command -v python3 >/dev/null || die "python3 is required"
     command -v npm >/dev/null || die "Node.js/npm is required to build the frontend"
   fi
-  systemctl enable --now libvirtd 2>/dev/null || systemctl enable --now virtqemud 2>/dev/null || true
+  start_libvirt
   ok "System dependencies installed"
 
   # ------------------------------------------------------------- users/dirs --
   id bluekvm >/dev/null 2>&1 || useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin bluekvm
+  ensure_service_groups
   install -d -o bluekvm -g bluekvm "$INSTALL_DIR" "$DATA_DIR/vms" "$DATA_DIR/templates" "$DATA_DIR/backups" "$LOG_DIR"
   ok "Directories and service account ready"
 
@@ -120,10 +121,13 @@ do_install() {
   ensure_python
   ok "Using Python interpreter: $PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
   info "Creating Python virtual environment"
-  "$PYTHON_BIN" -m venv "$INSTALL_DIR/backend/.venv"
+  # --system-site-packages is required so the distro python3-libvirt binding
+  # (installed via apt, no PyPI wheel) is importable inside the venv.
+  "$PYTHON_BIN" -m venv --system-site-packages "$INSTALL_DIR/backend/.venv"
   "$INSTALL_DIR/backend/.venv/bin/pip" install --upgrade pip >/dev/null
   "$INSTALL_DIR/backend/.venv/bin/pip" install -r "$INSTALL_DIR/backend/requirements.txt" \
     || die "Python dependency installation failed."
+  verify_libvirt_binding "$INSTALL_DIR/backend/.venv/bin/python"
   ok "Backend dependencies installed"
 
   info "Building frontend"
@@ -231,6 +235,31 @@ EOF
     fi
     sleep 2
   done
+
+  # Probe the local hypervisor once so the local node flips from
+  # "unconfigured" to online/offline with the real KVM reason recorded.
+  info "Probing local virtualization node"
+  (
+    cd "$INSTALL_DIR/backend"
+    . .venv/bin/activate
+    set -a; . "$ENV_FILE"; set +a
+    python - <<'PY'
+from app.database import Base, SessionLocal, engine
+from app.bootstrap import run_bootstrap
+from app.models import Node
+from app.virtualization.manager import manager
+
+Base.metadata.create_all(bind=engine)
+db = SessionLocal()
+run_bootstrap(db, health_check=False)
+node = db.query(Node).filter(Node.is_local.is_(True)).first()
+if node:
+    manager.health_check(db, node)
+    print(f"node={node.name} status={node.status.value} kvm_ready={node.kvm_ready}")
+    if node.last_error:
+        print(f"reason={node.last_error}")
+PY
+  ) || warn "Node probe failed — open Virtualization Nodes and click Verify connection"
 
   chown -R bluekvm:bluekvm "$DATA_DIR" "$LOG_DIR" "$INSTALL_DIR" 2>/dev/null || true
 

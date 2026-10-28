@@ -186,6 +186,52 @@ has_systemd() {
   [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1
 }
 
+# Start the libvirt daemon on both systemd hosts and containers/WSL where
+# only the SysV-style "service" shim is available.
+start_libvirt() {
+  if has_systemd; then
+    systemctl enable --now libvirtd 2>/dev/null \
+      || systemctl enable --now virtqemud 2>/dev/null || true
+  elif command -v service >/dev/null 2>&1; then
+    service libvirtd start 2>/dev/null || service virtqemud start 2>/dev/null || true
+  fi
+  # Give the socket a moment to appear
+  local i
+  for i in $(seq 1 10); do
+    [ -S /var/run/libvirt/libvirt-sock ] || [ -S /run/libvirt/libvirt-sock ] && return 0
+    sleep 1
+  done
+  return 0
+}
+
+# Grant the panel account access to libvirt and /dev/kvm. Distributions name
+# the groups slightly differently, so only touch groups that actually exist.
+ensure_service_groups() {
+  command -v usermod >/dev/null 2>&1 || return 0
+  id bluekvm >/dev/null 2>&1 || return 0
+  local grp
+  for grp in libvirt libvirt-qemu kvm; do
+    if getent group "$grp" >/dev/null 2>&1; then
+      usermod -aG "$grp" bluekvm 2>/dev/null || true
+    fi
+  done
+}
+
+# The apt-provided python3-libvirt binding lives in the system dist-packages
+# tree; a default isolated venv cannot import it. This verifies the binding is
+# visible and emits an actionable warning (the venv is created with
+# --system-site-packages by the installer).
+verify_libvirt_binding() {
+  local venv_python="$1"
+  if "$venv_python" -c 'import libvirt' >/dev/null 2>&1; then
+    ok "libvirt Python binding visible in virtualenv"
+    return 0
+  fi
+  warn "libvirt Python binding not visible inside the virtualenv"
+  warn "Install it for the same interpreter, e.g.: apt-get install -y python3-libvirt"
+  warn "then re-run the installer (the venv is built with --system-site-packages)."
+}
+
 is_container() {
   [ -f /.dockerenv ] || grep -qE '(docker|containerd|kubepods|lxc)' /proc/1/cgroup 2>/dev/null
 }
