@@ -118,6 +118,139 @@ check_port() {
 
 installed() { [ -d "$INSTALL_DIR" ] && [ -f "$ENV_FILE" ]; }
 
+# --------------------------------------------------------- package repair --
+# A previously interrupted apt/dpkg run blocks every later package operation
+# ("dpkg was interrupted"). Repair it automatically before installing anything.
+repair_package_state() {
+  if [ "$DISTRO_FAMILY" = "debian" ]; then
+    if command -v dpkg >/dev/null 2>&1; then
+      info "Checking package manager state"
+      dpkg --configure -a >/dev/null 2>&1 || warn "dpkg --configure -a reported issues"
+      apt-get -f install -y >/dev/null 2>&1 || true
+    fi
+  elif [ "$DISTRO_FAMILY" = "rhel" ]; then
+    command -v dnf >/dev/null 2>&1 && dnf -q clean all >/dev/null 2>&1 || true
+  fi
+}
+
+# ------------------------------------------------------------ python pick --
+# New interpreters (3.14+) lack prebuilt wheels for native deps such as
+# pydantic-core, which forces a Rust source build and fails. Restrict the
+# panel virtualenv to interpreters with full wheel coverage (3.10 - 3.13).
+python_supported() {
+  local bin="$1"
+  command -v "$bin" >/dev/null 2>&1 || return 1
+  "$bin" -c 'import sys; raise SystemExit(0 if (3, 10) <= sys.version_info[:2] <= (3, 13) else 1)' 2>/dev/null
+}
+
+pick_python() {
+  local candidate
+  # Prefer mature, widely-wheeled interpreters first.
+  for candidate in python3.12 python3.11 python3.13 python3.10; do
+    if python_supported "$candidate"; then
+      command -v "$candidate"
+      return 0
+    fi
+  done
+  if python_supported python3; then
+    command -v python3
+    return 0
+  fi
+  return 1
+}
+
+ensure_python() {
+  local picked
+  picked="$(pick_python 2>/dev/null || true)"
+  if [ -n "$picked" ]; then
+    PYTHON_BIN="$picked"
+    return 0
+  fi
+  warn "No supported Python (3.10-3.13) found; attempting to install python3.12"
+  if [ "$DISTRO_FAMILY" = "debian" ]; then
+    apt-get install -y python3.12 python3.12-venv || true
+  elif [ "$DISTRO_FAMILY" = "rhel" ]; then
+    dnf install -y python3.12 || true
+  fi
+  picked="$(pick_python 2>/dev/null || true)"
+  if [ -z "$picked" ]; then
+    err "A supported Python interpreter (3.10 through 3.13) is required."
+    err "Detected interpreter: $(python3 --version 2>&1 || echo 'python3 missing')."
+    die "Install python3.12 (e.g. 'apt install python3.12 python3.12-venv') and re-run."
+  fi
+  PYTHON_BIN="$picked"
+}
+
+# ------------------------------------------------------- runtime detection --
+has_systemd() {
+  [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1
+}
+
+is_container() {
+  [ -f /.dockerenv ] || grep -qE '(docker|containerd|kubepods|lxc)' /proc/1/cgroup 2>/dev/null
+}
+
+# -------------------------------------------------- credential interaction --
+password_strength_ok() {
+  local p="$1" classes=0
+  [ "${#p}" -ge 12 ] || return 1
+  printf '%s' "$p" | grep -q '[a-z]' && classes=$((classes + 1))
+  printf '%s' "$p" | grep -q '[A-Z]' && classes=$((classes + 1))
+  printf '%s' "$p" | grep -q '[0-9]' && classes=$((classes + 1))
+  printf '%s' "$p" | grep -q '[^a-zA-Z0-9]' && classes=$((classes + 1))
+  [ "$classes" -ge 3 ]
+}
+
+# Interactive admin setup. Non-interactive (piped/CI/container build) runs
+# keep using BLUEKVM_ADMIN_* environment variables or a random password.
+# Outputs: ADMIN_EMAIL, ADMIN_PASSWORD, GENERATED_ADMIN_PASSWORD.
+prompt_admin_credentials() {
+  ADMIN_EMAIL="${BLUEKVM_ADMIN_EMAIL:-admin@localhost}"
+  ADMIN_PASSWORD="${BLUEKVM_ADMIN_PASSWORD:-}"
+  GENERATED_ADMIN_PASSWORD=""
+
+  # Explicit env-provided credentials always win (CI, automation, Docker)
+  if [ -n "$ADMIN_PASSWORD" ]; then
+    info "Using administrator password from BLUEKVM_ADMIN_PASSWORD"
+    return 0
+  fi
+
+  if [ -t 0 ]; then
+    printf "\n%bAdministrator account setup%b\n" "$C_BLUE_BOLD" "$C_RESET"
+    if [ -z "${BLUEKVM_ADMIN_EMAIL:-}" ]; then
+      printf "Administrator email [%s]: " "$ADMIN_EMAIL"
+      read -r INPUT_EMAIL
+      ADMIN_EMAIL="${INPUT_EMAIL:-$ADMIN_EMAIL}"
+    fi
+
+    while true; do
+      printf "Administrator password (min 12 chars, blank = generate one): "
+      read -rs P1; echo
+      if [ -z "$P1" ]; then
+        break
+      fi
+      if ! password_strength_ok "$P1"; then
+        warn "Password needs at least 12 characters and 3 of: lowercase, uppercase, digit, symbol"
+        continue
+      fi
+      printf "Confirm password: "
+      read -rs P2; echo
+      if [ "$P1" != "$P2" ]; then
+        warn "Passwords do not match — try again"
+        continue
+      fi
+      ADMIN_PASSWORD="$P1"
+      return 0
+    done
+  fi
+
+  # Interactive blank entry, piped curl installs, CI or container builds:
+  # always end with a strong random password, never an empty secret.
+  GENERATED_ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9!@#%^+_-' | head -c 20)"
+  ADMIN_PASSWORD="$GENERATED_ADMIN_PASSWORD"
+  [ -t 0 ] && ok "A random password will be generated and shown once after installation"
+}
+
 service_state() {
   local svc="$1"
   if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files "$svc.service" >/dev/null 2>&1 | grep -q "$svc"; then

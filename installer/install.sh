@@ -70,6 +70,7 @@ do_install() {
 
   echo
   info "Installing system dependencies"
+  repair_package_state
   if [ "$DISTRO_FAMILY" = "debian" ]; then
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -y
@@ -99,11 +100,15 @@ do_install() {
 
   # ------------------------------------------------------------- application --
   info "Deploying application files to $INSTALL_DIR"
+  # Repositories can inherit an owner different from the installing user
+  # (containers, mounted volumes); whitelist the path before any git call.
+  git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
   if [ -d "$SCRIPT_DIR/../backend" ] && [ -d "$SCRIPT_DIR/../frontend" ]; then
     rsync -a --delete --exclude '.venv' --exclude 'node_modules' --exclude 'dist' \
       --exclude '.git' --exclude '__pycache__' "$SCRIPT_DIR/../" "$INSTALL_DIR/"
   else
     if [ -d "$INSTALL_DIR/.git" ]; then
+      git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
       git -C "$INSTALL_DIR" pull --ff-only || die "git pull failed"
     else
       git clone "https://github.com/${GITHUB_REPO}.git" "$INSTALL_DIR" || die "Source download failed."
@@ -112,8 +117,10 @@ do_install() {
   install -d -m 755 "$INSTALL_DIR/installer"
   cp -f "$SCRIPT_DIR"/*.sh "$INSTALL_DIR/installer/" 2>/dev/null || true
 
+  ensure_python
+  ok "Using Python interpreter: $PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
   info "Creating Python virtual environment"
-  python3 -m venv "$INSTALL_DIR/backend/.venv"
+  "$PYTHON_BIN" -m venv "$INSTALL_DIR/backend/.venv"
   "$INSTALL_DIR/backend/.venv/bin/pip" install --upgrade pip >/dev/null
   "$INSTALL_DIR/backend/.venv/bin/pip" install -r "$INSTALL_DIR/backend/requirements.txt" \
     || die "Python dependency installation failed."
@@ -128,17 +135,12 @@ do_install() {
   SECRET_KEY="$(openssl rand -hex 32)"
   CREDENTIAL_KEY="$("$INSTALL_DIR/backend/.venv/bin/python" -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
   ADMIN_USERNAME="${BLUEKVM_ADMIN_USERNAME:-admin}"
-  ADMIN_EMAIL="${BLUEKVM_ADMIN_EMAIL:-admin@localhost}"
-  ADMIN_PASSWORD="$BLUEKVM_ADMIN_PASSWORD"
-  GENERATED_ADMIN_PASSWORD=""
-  if [ -z "$ADMIN_PASSWORD" ]; then
-    GENERATED_ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -dc 'A-Za-z0-9!@#%^+_-' | head -c 20)"
-    ADMIN_PASSWORD="$GENERATED_ADMIN_PASSWORD"
-  fi
+  # Interactive email/password prompt (no-ops for non-TTY/CI installs)
+  prompt_admin_credentials
 
   DB_KIND="sqlite"
   DATABASE_URL="sqlite:///$DATA_DIR/bluekvm.db"
-  if command -v psql >/dev/null 2>&1; then
+  if command -v psql >/dev/null 2>&1 && has_systemd; then
     info "Configuring PostgreSQL"
     PG_PASSWORD="$(openssl rand -hex 16)"
     if ! systemctl is-active --quiet postgresql; then
@@ -191,11 +193,34 @@ EOF
   ok "Migrations applied"
 
   # ------------------------------------------------------------- services ----
-  install -m 644 "$INSTALL_DIR/deployment/bluekvm-api.service" /etc/systemd/system/
-  install -m 644 "$INSTALL_DIR/deployment/bluekvm-worker.service" /etc/systemd/system/
-  systemctl daemon-reload
-  systemctl enable --now bluekvm-worker bluekvm-api || die "Services failed to start."
-  ok "systemd services enabled and started"
+  # A standalone start script works everywhere (containers, WSL, bare metal).
+  cat > "$INSTALL_DIR/start-panel.sh" <<EOF
+#!/usr/bin/env bash
+# BLUEKVM PANNEL launcher (embedded worker; no systemd required)
+set -euo pipefail
+cd "$INSTALL_DIR/backend"
+set -a; . "$ENV_FILE"; set +a
+exec "$INSTALL_DIR/backend/.venv/bin/uvicorn" app.main:app \\
+  --host 0.0.0.0 --port "\${BLUEKVM_PORT:-$PANEL_PORT}"
+EOF
+  chmod 755 "$INSTALL_DIR/start-panel.sh"
+
+  if has_systemd; then
+    install -m 644 "$INSTALL_DIR/deployment/bluekvm-api.service" /etc/systemd/system/
+    install -m 644 "$INSTALL_DIR/deployment/bluekvm-worker.service" /etc/systemd/system/
+    systemctl daemon-reload
+    systemctl enable --now bluekvm-worker bluekvm-api || die "Services failed to start."
+    ok "systemd services enabled and started"
+  else
+    warn "systemd is not available (container/WSL). Installing start script instead."
+    if is_container; then info "Container environment detected"; fi
+    # Best-effort immediate start; restarts are the orchestrator's responsibility.
+    pkill -f "uvicorn app.main:app" 2>/dev/null || true
+    nohup "$INSTALL_DIR/start-panel.sh" >>"$LOG_DIR/panel.out.log" 2>&1 &
+    sleep 2
+    ok "Panel launched in background (log: $LOG_DIR/panel.out.log)"
+    info "Start manually any time with: $INSTALL_DIR/start-panel.sh"
+  fi
 
   # ------------------------------------------------------------- health ------
   info "Running health checks"
@@ -219,7 +244,7 @@ EOF
   if [ -n "$GENERATED_ADMIN_PASSWORD" ]; then
     printf "  Password  : %b%s%b  (shown once — store it now)\n" "$C_YELLOW" "$GENERATED_ADMIN_PASSWORD" "$C_RESET"
   else
-    echo "  Password  : (the one provided through BLUEKVM_ADMIN_PASSWORD)"
+    echo "  Password  : (the one you entered, or supplied via BLUEKVM_ADMIN_PASSWORD)"
   fi
   echo "  Database  : $DB_KIND"
   if [ "${KVM_READY:-0}" -eq 0 ]; then

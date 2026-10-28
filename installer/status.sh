@@ -83,6 +83,15 @@ else
   warn "KVM           : NOT READY ($(detect_distro 2>/dev/null; uname -m); nested virt or modules may be missing)"
 fi
 
+# ------------------------------------------------------------------- python --
+if [ -x "$INSTALL_DIR/backend/.venv/bin/python" ]; then
+  ok "Python venv   : $("$INSTALL_DIR/backend/.venv/bin/python" --version 2>&1) ($INSTALL_DIR/backend/.venv)"
+elif installed; then
+  err "Python venv   : MISSING (re-run the installer or create it with python3.12 -m venv)"
+else
+  warn "Python venv   : NOT CONFIGURED"
+fi
+
 # ------------------------------------------------------------ live resources --
 CPU_PERCENT="$(ps -A -o %cpu 2>/dev/null | awk -v cores="$(nproc)" '{s+=$1} END {printf "%.1f%%", s/cores}')"
 MEM_LINE="$(free -m | awk '/Mem:/ {printf "%d MB / %d MB (%.1f%%)", $3, $2, $3/$2*100}')"

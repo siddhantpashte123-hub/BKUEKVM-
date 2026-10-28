@@ -25,23 +25,47 @@ The installer menu offers:
 ### What installation does
 
 1. Verifies root, distribution, architecture, RAM/disk, KVM and port 8080.
-2. Installs QEMU/KVM, libvirt, PostgreSQL, nginx, Python, Node.js and image tooling.
-3. Deploys the application under `/opt/bluekvm` and creates a `bluekvm` service account.
-4. Builds the React frontend and the Python virtual environment.
-5. Creates the PostgreSQL database/role (or falls back to SQLite with a warning).
-6. Generates a 256-bit app secret, a Fernet credential key and, if none is supplied,
-   a random administrator password shown **once**.
-7. Writes `/opt/bluekvm/.env` with `0600` permissions.
-8. Runs Alembic migrations (`alembic upgrade head`).
-9. Installs and starts `bluekvm-api` and `bluekvm-worker` systemd units.
-10. Polls `http://127.0.0.1:8080/health/ready` until healthy and prints the result.
+2. Repairs any interrupted package state (`dpkg --configure -a`) automatically.
+3. Installs QEMU/KVM, libvirt, PostgreSQL, nginx, Python, Node.js and image tooling.
+4. Deploys the application under `/opt/bluekvm` and creates a `bluekvm` service account.
+5. Selects a supported Python interpreter (3.10–3.13; 3.12 preferred) so all native
+   dependencies install from prebuilt wheels — Python 3.14 is deliberately avoided
+   because wheel coverage is incomplete and source builds require a Rust toolchain.
+6. Builds the React frontend and the Python virtual environment.
+7. Creates the PostgreSQL database/role (or falls back to SQLite with a warning).
+8. Generates a 256-bit app secret and a Fernet credential key.
+9. Interactively prompts for the administrator **email and password** (TTY installs):
+   the password is hidden, confirmed, and must be 12+ characters with three character
+   classes. Leaving it blank generates a random one shown **once**.
+10. Writes `/opt/bluekvm/.env` with `0600` permissions.
+11. Runs Alembic migrations (`alembic upgrade head`).
+12. On systemd hosts, installs and starts `bluekvm-api` and `bluekvm-worker`; in
+    containers/WSL it writes `/opt/bluekvm/start-panel.sh` and launches the panel
+    with the embedded worker instead.
+13. Polls `http://127.0.0.1:8080/health/ready` until healthy and prints the result.
 
-### Pre-seeding an administrator password
+### Administrator credentials
+
+Interactive install (recommended) — the installer asks:
+
+```
+Administrator account setup
+Administrator email [admin@localhost]:
+Administrator password (min 12 chars, blank = generate one): ********
+Confirm password: ********
+```
+
+Non-interactive/CI pre-seeding skips the prompts entirely:
 
 ```bash
-sudo BLUEKVM_ADMIN_USERNAME=admin BLUEKVM_ADMIN_PASSWORD='Strong!Passw0rd-123' \
+sudo BLUEKVM_ADMIN_USERNAME=admin \
+     BLUEKVM_ADMIN_EMAIL=ops@example.com \
+     BLUEKVM_ADMIN_PASSWORD='Strong!Passw0rd-123' \
   bash install.sh
 ```
+
+Piped installs (`curl | bash`) without a TTY and without environment variables receive
+a random password printed once in the final installation summary.
 
 ## 3. First login
 
