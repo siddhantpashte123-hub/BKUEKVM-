@@ -1,5 +1,11 @@
 """Browser SSH terminal: credential handling, session tokens, WS auth."""
+from importlib.metadata import metadata
+from pathlib import Path
+
 import pytest
+from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
+from packaging.version import Version
 from starlette.websockets import WebSocketDisconnect
 
 from app.security import decrypt_secret, generate_password
@@ -27,6 +33,31 @@ def _create_vps(client, **overrides):
 
 
 # ------------------------------------------------------------- unit checks
+def test_asyncssh_cryptography_requirement_is_resolvable():
+    """Keep the installer pins compatible with AsyncSSH's upstream metadata.
+
+    This guards the dependency-resolution failure which otherwise stops a fresh
+    panel installation before migrations or services can be started.
+    """
+    requirements_path = Path(__file__).parents[1] / "requirements.txt"
+    requirements = {
+        requirement.name.lower(): requirement
+        for line in requirements_path.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+        for requirement in (Requirement(line),)
+    }
+    pinned_crypto = requirements["cryptography"]
+    assert pinned_crypto.specifier == SpecifierSet("==48.0.1")
+    pinned_version = Version("48.0.1")
+
+    asyncssh_crypto_requirement = next(
+        Requirement(item)
+        for item in metadata("asyncssh").get_all("Requires-Dist") or []
+        if Requirement(item).name.lower() == "cryptography"
+    )
+    assert pinned_version in asyncssh_crypto_requirement.specifier
+
+
 def test_libvirt_version_integer_formatting():
     # Real conn.getVersion() returns a single int, never an iterable
     assert format_libvirt_version(10000000) == "10.0.0"

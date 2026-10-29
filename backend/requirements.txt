@@ -11,7 +11,9 @@ python-multipart==0.0.20
 psutil==6.1.1
 httpx==0.28.1
 websockets==14.1
-cryptography==44.0.0
+# asyncssh==2.24.1 requires cryptography>=48.0.1. Keep this exact compatible
+# wheel pin so the unattended installer resolves on every supported Python.
+cryptography==48.0.1
 email-validator==2.2.0
 PyYAML==6.0.2
 # Pure-Python SSH client for the in-browser terminal (wheels for 3.10-3.13)
