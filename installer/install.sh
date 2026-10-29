@@ -59,13 +59,16 @@ do_install() {
   check_arch
   check_resources
   check_kvm
-  check_port "$PANEL_PORT" || die "Free port $PANEL_PORT and re-run the installer."
-
+  UPGRADE=0
   if installed; then
+    UPGRADE=1
     warn "An existing BLUEKVM PANNEL installation was found at $INSTALL_DIR"
     printf "Continue and upgrade in place? Existing VMs and data are preserved [y/N]: "
     read -r CONFIRM
     [ "$CONFIRM" = "y" ] || [ "$CONFIRM" = "Y" ] || die "Installation cancelled."
+  else
+    [ ! -e "$ENV_FILE" ] || die "Existing configuration found; refusing to overwrite it."
+    check_port "$PANEL_PORT" || die "Free port $PANEL_PORT and re-run the installer."
   fi
 
   echo
@@ -112,14 +115,28 @@ do_install() {
   # (containers, mounted volumes); whitelist the path before any git call.
   git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
   if [ -d "$SCRIPT_DIR/../backend" ] && [ -d "$SCRIPT_DIR/../frontend" ]; then
-    rsync -a --delete --exclude '.venv' --exclude 'node_modules' --exclude 'dist' \
-      --exclude '.git' --exclude '__pycache__' "$SCRIPT_DIR/../" "$INSTALL_DIR/"
+    rsync -a --exclude '.venv' --exclude 'node_modules' --exclude 'dist' \
+      --exclude '.git' --exclude '.env' --exclude '__pycache__' "$SCRIPT_DIR/../" "$INSTALL_DIR/"
   else
     if [ -d "$INSTALL_DIR/.git" ]; then
       git config --global --add safe.directory "$INSTALL_DIR" 2>/dev/null || true
       git -C "$INSTALL_DIR" pull --ff-only || die "git pull failed"
     else
-      git clone "https://github.com/${GITHUB_REPO}.git" "$INSTALL_DIR" || die "Source download failed."
+      # Installations deployed from a source checkout may not contain .git.
+      # Clone into a temporary directory rather than cloning over an existing
+      # directory (which contains .env and other local state).
+      SOURCE_TMP="$(mktemp -d)" || die "Could not create source staging directory."
+      git clone "https://github.com/${GITHUB_REPO}.git" "$SOURCE_TMP/source" || {
+        rm -rf "$SOURCE_TMP"
+        die "Source download failed."
+      }
+      rsync -a --exclude '.git' --exclude '.env' --exclude '.venv' \
+        --exclude 'node_modules' --exclude 'dist' --exclude '__pycache__' \
+        "$SOURCE_TMP/source/" "$INSTALL_DIR/" || {
+        rm -rf "$SOURCE_TMP"
+        die "Source deployment failed."
+      }
+      rm -rf "$SOURCE_TMP"
     fi
   fi
   install -d -m 755 "$INSTALL_DIR/installer"
@@ -145,36 +162,48 @@ do_install() {
   ok "Frontend built"
 
   # ------------------------------------------------------------- secrets/env --
-  SECRET_KEY="$(openssl rand -hex 32)"
-  CREDENTIAL_KEY="$("$INSTALL_DIR/backend/.venv/bin/python" -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
-  ADMIN_USERNAME="${BLUEKVM_ADMIN_USERNAME:-admin}"
-  # Interactive email/password prompt (no-ops for non-TTY/CI installs)
-  prompt_admin_credentials
-
-  DB_KIND="sqlite"
-  DATABASE_URL="sqlite:///$DATA_DIR/bluekvm.db"
-  if command -v psql >/dev/null 2>&1 && has_systemd; then
-    info "Configuring PostgreSQL"
-    PG_PASSWORD="$(openssl rand -hex 16)"
-    if ! systemctl is-active --quiet postgresql; then
-      if [ "$DISTRO_FAMILY" = "rhel" ]; then
-        postgresql-setup --initdb 2>/dev/null || true
-      fi
-      systemctl enable --now postgresql
-    fi
-    su - postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='bluekvm'\"" | grep -q 1 \
-      || su - postgres -c "psql -c \"CREATE ROLE bluekvm LOGIN PASSWORD '$PG_PASSWORD';\""
-    su - postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname='bluekvm'\"" | grep -q 1 \
-      || su - postgres -c "createdb -O bluekvm bluekvm"
-    DATABASE_URL="postgresql+psycopg://bluekvm:${PG_PASSWORD}@127.0.0.1:5432/bluekvm"
-    DB_KIND="postgresql"
-    ok "PostgreSQL database 'bluekvm' ready"
+  if [ "$UPGRADE" -eq 1 ]; then
+    # The Fernet key and database URL are essential for existing VM credentials
+    # and data. Never regenerate or rewrite them during an upgrade.
+    [ -f "$ENV_FILE" ] || die "Existing configuration is missing; upgrade aborted."
+    set -a; . "$ENV_FILE"; set +a
+    [ -n "${DATABASE_URL:-}" ] || die "Existing DATABASE_URL missing; upgrade aborted."
+    ADMIN_USERNAME="${BLUEKVM_ADMIN_USERNAME:-admin}"
+    GENERATED_ADMIN_PASSWORD=""
+    case "$DATABASE_URL" in sqlite:*) DB_KIND="sqlite" ;; *) DB_KIND="existing database" ;; esac
+    PANEL_PORT="${BLUEKVM_PORT:-$PANEL_PORT}"
+    ok "Existing configuration and credentials preserved"
   else
-    warn "PostgreSQL not available — using SQLite at $DATA_DIR/bluekvm.db (development fallback)"
-  fi
+    SECRET_KEY="$(openssl rand -hex 32)"
+    CREDENTIAL_KEY="$("$INSTALL_DIR/backend/.venv/bin/python" -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+    ADMIN_USERNAME="${BLUEKVM_ADMIN_USERNAME:-admin}"
+    # Interactive email/password prompt (no-ops for non-TTY/CI installs)
+    prompt_admin_credentials
 
-  umask 077
-  cat > "$ENV_FILE" <<EOF
+    DB_KIND="sqlite"
+    DATABASE_URL="sqlite:///$DATA_DIR/bluekvm.db"
+    if command -v psql >/dev/null 2>&1 && has_systemd; then
+      info "Configuring PostgreSQL"
+      PG_PASSWORD="$(openssl rand -hex 16)"
+      if ! systemctl is-active --quiet postgresql; then
+        if [ "$DISTRO_FAMILY" = "rhel" ]; then
+          postgresql-setup --initdb 2>/dev/null || true
+        fi
+        systemctl enable --now postgresql
+      fi
+      su - postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='bluekvm'\"" | grep -q 1 \
+        || su - postgres -c "psql -c \"CREATE ROLE bluekvm LOGIN PASSWORD '$PG_PASSWORD';\""
+      su - postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname='bluekvm'\"" | grep -q 1 \
+        || su - postgres -c "createdb -O bluekvm bluekvm"
+      DATABASE_URL="postgresql+psycopg://bluekvm:${PG_PASSWORD}@127.0.0.1:5432/bluekvm"
+      DB_KIND="postgresql"
+      ok "PostgreSQL database 'bluekvm' ready"
+    else
+      warn "PostgreSQL not available — using SQLite at $DATA_DIR/bluekvm.db (development fallback)"
+    fi
+
+    umask 077
+    cat > "$ENV_FILE" <<EOF
 BLUEKVM_ENV=production
 BLUEKVM_HOST=0.0.0.0
 BLUEKVM_PORT=$PANEL_PORT
@@ -196,8 +225,9 @@ BLUEKVM_BACKUP_DIR=$DATA_DIR/backups
 BLUEKVM_LOG_LEVEL=INFO
 BLUEKVM_LOG_DIR=$LOG_DIR
 EOF
-  chmod 600 "$ENV_FILE"
-  ok "Environment file written with generated secrets"
+    chmod 600 "$ENV_FILE"
+    ok "Environment file written with generated secrets"
+  fi
 
   # ------------------------------------------------------------- migrations --
   info "Running database migrations"
@@ -222,7 +252,8 @@ EOF
     install -m 644 "$INSTALL_DIR/deployment/bluekvm-api.service" /etc/systemd/system/
     install -m 644 "$INSTALL_DIR/deployment/bluekvm-worker.service" /etc/systemd/system/
     systemctl daemon-reload
-    systemctl enable --now bluekvm-worker bluekvm-api || die "Services failed to start."
+    systemctl enable bluekvm-worker bluekvm-api || die "Could not enable services."
+    systemctl restart bluekvm-worker bluekvm-api || die "Services failed to start."
     ok "systemd services enabled and started"
   else
     warn "systemd is not available (container/WSL). Installing start script instead."
