@@ -108,6 +108,18 @@ sudo systemctl restart bluekvm-worker bluekvm-api
 
 ## Networking
 
+- **`network 'default' is not active` when starting a VPS** — BLUEKVM retries
+  activation before every start, so update/restart the panel and click **Start**
+  again. For an immediate repair on a trusted KVM host, inspect and activate it:
+  ```bash
+  sudo virsh -c qemu:///system net-list --all
+  sudo virsh -c qemu:///system net-start default
+  sudo virsh -c qemu:///system net-autostart default
+  ```
+  If `net-start` says `operation not permitted`, the container lacks
+  `CAP_NET_ADMIN`; a libvirt NAT bridge cannot run there. Use a privileged KVM
+  host or register an external KVM node — do not expose a raw guest SSH/VNC port
+  as a workaround.
 - Guests with no DHCP lease: confirm the libvirt network is active
   (`virsh net-list --all`) and the bridge name matches the node's network.
 - The panel never edits the host's primary network configuration automatically.
