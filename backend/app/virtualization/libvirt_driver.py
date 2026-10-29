@@ -327,10 +327,50 @@ class LibvirtDriver(HypervisorDriver):
         except Exception as exc:
             raise HypervisorError(f"Domain '{name}' is not defined on this node: {exc}") from exc
 
+    @staticmethod
+    def _uses_default_network(domain) -> bool:
+        """Return whether a persistent domain is attached to libvirt's default NAT.
+
+        The network can become inactive after a libvirtd/container restart even
+        though the VM definition itself remains valid. Inspecting the stored XML
+        avoids touching bridge- and custom-network guests at start time.
+        """
+        try:
+            root = ET.fromstring(domain.XMLDesc())
+            return any(
+                interface.get("type") == "network"
+                and (source := interface.find("source")) is not None
+                and source.get("network") == "default"
+                for interface in root.findall(".//devices/interface")
+            )
+        except Exception as exc:
+            log.warning("could not inspect domain network XML: %s", exc)
+            return False
+
     def start(self, name: str) -> None:
         domain = self._lookup(name)
         if domain.isActive():
             return
+
+        # A domain with a <source network='default'/> cannot boot while the
+        # NAT network is inactive. Re-start it here as well as during node
+        # health checks: existing VMs must recover after libvirtd restarts.
+        if self._uses_default_network(domain):
+            network_state = self.ensure_default_network()
+            if network_state != "active":
+                if network_state == "defined":
+                    reason = (
+                        "it is defined but libvirt could not activate it. This is usually "
+                        "a container missing CAP_NET_ADMIN or a stopped libvirt network daemon"
+                    )
+                else:
+                    reason = "it could not be found or defined by libvirt"
+                raise HypervisorError(
+                    f"Cannot start '{name}': required NAT network 'default' is inactive and {reason}. "
+                    "The panel did not change the VM. On a privileged host, run "
+                    "'virsh -c qemu:///system net-start default' then retry; otherwise use "
+                    "a KVM-capable external node with NAT networking enabled."
+                )
         try:
             domain.create()
         except Exception as exc:

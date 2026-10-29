@@ -79,6 +79,86 @@ def test_domain_xml_uses_sata_sda_not_sr0():
     assert "dev='vda' bus='virtio'" in xml
 
 
+def test_start_reactivates_default_network_before_domain(monkeypatch):
+    """Existing VMs recover when libvirtd restarts with default NAT inactive."""
+    events: list[str] = []
+
+    class Network:
+        active = False
+        autostart = False
+
+        def isActive(self):
+            return self.active
+
+        def setAutostart(self, enabled):
+            self.autostart = enabled
+
+        def create(self):
+            events.append("network")
+            self.active = True
+
+    class Connection:
+        def networkLookupByName(self, name):
+            assert name == "default"
+            return network
+
+    class Domain:
+        def isActive(self):
+            return False
+
+        def XMLDesc(self):
+            return "<domain><devices><interface type='network'><source network='default'/></interface></devices></domain>"
+
+        def create(self):
+            events.append("domain")
+
+    network = Network()
+    driver = LibvirtDriver("qemu:///system", "/tmp/vms")
+    monkeypatch.setattr(driver, "_connect", lambda: Connection())
+    monkeypatch.setattr(driver, "_lookup", lambda _name: Domain())
+
+    driver.start("existing-vm")
+
+    assert network.autostart is True
+    assert events == ["network", "domain"]
+
+
+def test_start_explains_default_network_activation_failure(monkeypatch):
+    """Containers without CAP_NET_ADMIN get a useful, non-destructive error."""
+    from app.virtualization.base import HypervisorError
+
+    class Network:
+        def isActive(self):
+            return False
+
+        def setAutostart(self, _enabled):
+            return None
+
+        def create(self):
+            raise RuntimeError("operation not permitted")
+
+    class Connection:
+        def networkLookupByName(self, _name):
+            return Network()
+
+    class Domain:
+        def isActive(self):
+            return False
+
+        def XMLDesc(self):
+            return "<domain><devices><interface type='network'><source network='default'/></interface></devices></domain>"
+
+        def create(self):
+            pytest.fail("domain must not be started without its required network")
+
+    driver = LibvirtDriver("qemu:///system", "/tmp/vms")
+    monkeypatch.setattr(driver, "_connect", lambda: Connection())
+    monkeypatch.setattr(driver, "_lookup", lambda _name: Domain())
+
+    with pytest.raises(HypervisorError, match="CAP_NET_ADMIN"):
+        driver.start("existing-vm")
+
+
 def test_generated_password_spans_character_classes():
     for _ in range(20):
         pw = generate_password()
