@@ -64,10 +64,9 @@ through *Virtualization Nodes*. It never simulates a successful VM.
   idempotent submissions and server-side capacity validation.
 - **Durable background worker** — queued tasks with timestamped steps, logs and progress;
   safe restarts and duplicate-claim protection.
-- **Browser SSH terminal** — "Open SSH" launches an xterm.js terminal in a new tab over
-  an authenticated WebSocket bridge (asyncssh server-side, single-use 60-second tokens,
-  encrypted VM credentials, auto guest-IP discovery). A localhost-only VNC bridge remains
-  as an emergency recovery path; no raw SSH/VNC port is ever exposed.
+- **Hosted SSHX terminal** — Open SSHX creates an authorized, time-limited
+  `sshx.io` bearer link and opens it in a new tab. The panel does not persist the link;
+  anyone with it can access the session, so do not share it. No raw guest SSH port is exposed.
 - **RBAC** — Super Administrator, Administrator, VPS Manager, Read-Only Viewer; per-VPS
   ownership scoping; session revocation and login history.
 - **OS templates** — curated Ubuntu/Debian cloud images with streamed download and
@@ -80,12 +79,12 @@ through *Virtualization Nodes*. It never simulates a successful VM.
 ## Architecture
 
 ```
-Browser (React + Vite + Tailwind, xterm.js)
-   │  cookie auth + CSRF token, WebSocket terminals
+Browser (React + Vite + Tailwind)
+   │  cookie auth + CSRF token, SSHX hand-off
    ▼
 FastAPI (Uvicorn :8080)  ── systemd: bluekvm-api
    ├── REST routers (/api/...)
-   ├── SSH terminal WebSocket (/ws/ssh) + recovery VNC proxy (/ws/console)
+   ├── SSHX session launcher + recovery VNC proxy (/ws/console)
    └── service layer (audit, metrics, templates, backups)
             │
    bluekvm-worker (systemd)  ── durable task queue in PostgreSQL
@@ -101,7 +100,7 @@ See [docs/architecture.md](docs/architecture.md) for details.
 
 ```
 ├── backend/            FastAPI app, libvirt driver, worker, Alembic, pytest
-├── frontend/           React + TypeScript + Vite + Tailwind, xterm.js
+├── frontend/           React + TypeScript + Vite + Tailwind, SSHX hand-off
 ├── installer/          install.sh (menu), uninstall.sh, status.sh, lib.sh
 ├── deployment/         systemd units, nginx TLS example
 ├── docs/               installation, troubleshooting, security, updates

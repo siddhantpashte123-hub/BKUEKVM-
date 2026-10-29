@@ -1,14 +1,10 @@
-"""Browser SSH terminal: credential handling, session tokens, WS auth."""
-from importlib.metadata import metadata
+"""Hosted SSHX terminal: credential handling, owner access and relay safety."""
 from pathlib import Path
 
 import pytest
-from packaging.requirements import Requirement
-from packaging.specifiers import SpecifierSet
-from packaging.version import Version
-from starlette.websockets import WebSocketDisconnect
 
 from app.security import decrypt_secret, generate_password
+from app.services.sshx_sessions import SshxSessionManager, sshx_sessions
 from app.virtualization.cloudinit import render_user_data
 from app.virtualization.libvirt_driver import (
     format_libvirt_version,
@@ -21,8 +17,8 @@ from tests.helpers import drain_tasks
 
 def _create_vps(client, **overrides):
     payload = {
-        "name": "ssh-vm",
-        "hostname": "ssh-vm",
+        "name": "sshx-vm",
+        "hostname": "sshx-vm",
         "template_id": 1,
         "vcpus": 1,
         "ram_mb": 512,
@@ -33,29 +29,57 @@ def _create_vps(client, **overrides):
 
 
 # ------------------------------------------------------------- unit checks
-def test_asyncssh_cryptography_requirement_is_resolvable():
-    """Keep the installer pins compatible with AsyncSSH's upstream metadata.
-
-    This guards the dependency-resolution failure which otherwise stops a fresh
-    panel installation before migrations or services can be started.
-    """
-    requirements_path = Path(__file__).parents[1] / "requirements.txt"
-    requirements = {
-        requirement.name.lower(): requirement
-        for line in requirements_path.read_text().splitlines()
-        if line.strip() and not line.lstrip().startswith("#")
-        for requirement in (Requirement(line),)
-    }
-    pinned_crypto = requirements["cryptography"]
-    assert pinned_crypto.specifier == SpecifierSet("==48.0.1")
-    pinned_version = Version("48.0.1")
-
-    asyncssh_crypto_requirement = next(
-        Requirement(item)
-        for item in metadata("asyncssh").get_all("Requires-Dist") or []
-        if Requirement(item).name.lower() == "cryptography"
+def test_sshx_launcher_keeps_password_out_of_shell_text(tmp_path, monkeypatch):
+    """Password is only a 0600 file, never a command argument or script literal."""
+    monkeypatch.setattr(SshxSessionManager, "_ssh_binary", staticmethod(lambda: "/usr/bin/ssh"))
+    password = "DoNotLeak!123"
+    launcher = SshxSessionManager._write_launcher(
+        tmp_path, host="192.168.122.42", username="ubuntu", password=password,
+        known_hosts=tmp_path / "known_hosts",
     )
-    assert pinned_version in asyncssh_crypto_requirement.specifier
+    secret_file = tmp_path / "password"
+
+    assert password not in launcher.read_text()
+    assert secret_file.read_text() == password
+    assert (secret_file.stat().st_mode & 0o777) == 0o600
+    assert (launcher.stat().st_mode & 0o777) == 0o700
+    assert "SSH_ASKPASS_REQUIRE=force" in launcher.read_text()
+    assert "StrictHostKeyChecking=accept-new" in launcher.read_text()
+    assert "UserKnownHostsFile=" in launcher.read_text()
+
+
+def test_sshx_manager_returns_hosted_url_and_cleans_secret_files(tmp_path, monkeypatch, db):
+    """Exercise the real process lifecycle with a local stand-in SSHX client."""
+    from datetime import datetime, timedelta, timezone
+    from app.config import settings
+
+    fake_sshx = tmp_path / "sshx"
+    fake_sshx.write_text(
+        "#!/bin/sh\necho 'https://sshx.io/s/owner-only#private-key'\ntrap 'exit 0' TERM INT\nwhile :; do sleep 1; done\n",
+        encoding="utf-8",
+    )
+    fake_sshx.chmod(0o700)
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setattr(settings, "sshx_binary", str(fake_sshx))
+    monkeypatch.setattr(settings, "sshx_runtime_dir", str(runtime_dir))
+    monkeypatch.setattr(settings, "sshx_known_hosts_dir", str(tmp_path / "known-hosts"))
+
+    manager = SshxSessionManager()
+    url = manager.start(
+        session_id=987654,
+        vps_name="vm1",
+        host="192.168.122.42",
+        username="ubuntu",
+        password="DoNotLeak!456",
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=30),
+    )
+    assert url == "https://sshx.io/s/owner-only#private-key"
+    workdirs = list(runtime_dir.iterdir())
+    assert len(workdirs) == 1
+    assert (workdirs[0] / "password").read_text() == "DoNotLeak!456"
+
+    manager.stop(987654)
+    assert list(runtime_dir.iterdir()) == []
 
 
 def test_libvirt_version_integer_formatting():
@@ -233,55 +257,55 @@ def test_explicit_password_is_encrypted(admin_client, db):
     assert decrypt_secret(vps.init_password_encrypted) == "My!StrongPass99"
 
 
-def test_ssh_session_requires_running_vps(admin_client):
-    created = _create_vps(admin_client, name="ssh-stopped", hostname="ssh-stopped").json()
-    # Before the worker runs, the VPS is still pending -> 409
-    resp = admin_client.post(f"/api/vps/{created['public_id']}/ssh-session")
+def test_sshx_session_requires_running_vps(admin_client):
+    created = _create_vps(admin_client, name="sshx-stopped", hostname="sshx-stopped").json()
+    # Before the worker runs, the VPS is still pending -> 409.
+    resp = admin_client.post(f"/api/vps/{created['public_id']}/sshx-session")
     assert resp.status_code == 409
 
 
-def test_ssh_session_token_flow_and_single_use(admin_client, fake_driver):
-    created = _create_vps(admin_client, name="ssh-flow", hostname="ssh-flow").json()
+def test_sshx_session_is_owner_authorized_and_url_is_not_persisted(admin_client, db, fake_driver, monkeypatch):
+    created = _create_vps(admin_client, name="sshx-flow", hostname="sshx-flow").json()
     drain_tasks()
-
-    # Fake driver reports a guest IP for the discovery endpoint
     fake_driver.get_guest_ip = lambda name, mac="": "192.168.122.42"
 
-    ip_resp = admin_client.get(f"/api/vps/{created['public_id']}/guest-ip")
-    assert ip_resp.status_code == 200
-    assert ip_resp.json()["ip_address"] == "192.168.122.42"
-    assert ip_resp.json()["username"] == "ubuntu"
+    started: dict = {}
 
-    session = admin_client.post(
-        f"/api/vps/{created['public_id']}/ssh-session"
-    ).json()
-    assert session["kind"] == "ssh"
-    assert session["ws_path"].startswith("/ws/ssh?token=")
+    def start_fake(**kwargs):
+        started.update(kwargs)
+        return "https://sshx.io/s/owner-only-example#private-key"
 
-    # No token -> rejected
-    with pytest.raises(WebSocketDisconnect) as exc:
-        with admin_client.websocket_connect("/ws/ssh"):
-            pass
-    assert exc.value.code == 4401
+    monkeypatch.setattr(sshx_sessions, "start", start_fake)
+    response = admin_client.post(f"/api/vps/{created['public_id']}/sshx-session")
+    assert response.status_code == 200, response.text
+    assert response.headers["cache-control"] == "no-store"
+    body = response.json()
+    assert body["kind"] == "sshx"
+    assert body["sshx_url"] == "https://sshx.io/s/owner-only-example#private-key"
+    assert "console_token" not in body
+    assert "ws_path" not in body
+    assert started["host"] == "192.168.122.42"
+    assert started["username"] == "ubuntu"
 
-    # A VNC-kind token must not be accepted on the SSH endpoint
-    vnc = admin_client.post(
-        f"/api/vps/{created['public_id']}/console-session"
-    ).json()
-    with pytest.raises(WebSocketDisconnect) as exc2:
-        with admin_client.websocket_connect(vnc["ws_path"].replace("/ws/console", "/ws/ssh")):
-            pass
-    assert exc2.value.code == 4401
+    # The bearer URL never lands in BLUEKVM database state or audit details.
+    from app.models import AuditLog, ConsoleSession
 
-    # The SSH token itself is valid and single-use: without a reachable SSH
-    # server it is still consumed, then replay fails at the auth layer.
-    with pytest.raises(WebSocketDisconnect):
-        with admin_client.websocket_connect(session["ws_path"]) as ws:
-            ws.receive()
-    with pytest.raises(WebSocketDisconnect) as exc3:
-        with admin_client.websocket_connect(session["ws_path"]):
-            pass
-    assert exc3.value.code == 4401
+    session = db.query(ConsoleSession).filter(ConsoleSession.vps_id == created["id"]).one()
+    assert session.kind == "sshx"
+    assert session.used_at is not None
+    assert session.revoked_at is None
+    assert "sshx.io" not in session.token_hash
+    audit = db.query(AuditLog).filter(AuditLog.action == "sshx.open").order_by(AuditLog.id.desc()).first()
+    assert audit is not None
+    assert "sshx.io" not in audit.details
+
+
+def test_sshx_session_409_when_guest_ip_unknown(admin_client, fake_driver):
+    created = _create_vps(admin_client, name="sshx-no-ip", hostname="sshx-no-ip").json()
+    drain_tasks()
+    resp = admin_client.post(f"/api/vps/{created['public_id']}/sshx-session")
+    assert resp.status_code == 409
+    assert "Guest IP address is not available" in resp.json()["detail"]
 
 
 def test_guest_ip_409_when_unknown(admin_client):

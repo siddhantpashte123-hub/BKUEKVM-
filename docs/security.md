@@ -47,18 +47,28 @@ sessions re-check VPS ownership before minting a token.
   is never returned to the browser or written to logs. A redaction filter strips secret
   fields from log records.
 
-## Browser terminals (SSH) and the recovery VNC bridge
+## Hosted SSHX terminals and the recovery VNC bridge
 
-- Browsers cannot send headers on WebSocket handshakes, so terminal access uses a
-  single-use, 60-second token bound to one user and one VPS (`console_sessions.kind`
-  distinguishes `ssh` from `vnc`).
+- **Open SSHX** requires normal panel cookie authentication, `vps:read` permission and
+  per-VPS ownership/operator authorization. It also requires a running VPS, a discovered
+  private guest IP and a stored provisioning credential.
 - VM passwords are generated or collected at provisioning time, Fernet-encrypted in the
-  `vps.init_password_encrypted` column, and decrypted only inside the SSH WebSocket
-  worker. They are never returned by any API (the create response carries a generated
-  password exactly once) and never reach browser JavaScript.
-- The SSH connection originates from the panel node toward the guest's private/NAT
-  address; no raw SSH or VNC port is exposed publicly. Guest host keys are not pinned
-  because guests live on the panel-owned private network and no key is persisted.
+  `vps.init_password_encrypted` column, and decrypted only in the panel worker while it
+  writes a private (`0600`) one-session OpenSSH AskPass file. Passwords never reach the
+  browser, URL, process command line, audit record, or application logs; the file is
+  deleted when the session ends.
+- The panel opens SSH from its own node to the guest private/NAT address and attaches it
+  to the official hosted `sshx.io` client. No raw guest SSH or VNC port is public.
+- SSHX uses a bearer URL. BLUEKVM returns it once to the authorized new tab and deliberately
+  never persists it; it has no share UI and kills the relay after 15 minutes. **Do not
+  share the URL** — anyone holding it can access the terminal while the relay is alive.
+- The OpenSSH guest connection uses trust-on-first-use (`accept-new`) with a per-VPS
+  known-hosts file. A changed key is refused, but the first connection is not independently
+  authenticated; use a trusted guest network and verify host keys out of band.
+- `console_sessions.kind=sshx` plus `sshx.open` audit events retain user/VPS/expiry lifecycle
+  evidence without storing the external URL. Shutdown also terminates all active SSHX relays.
+  A forced API crash can leave temporary credential files in the protected runtime directory;
+  inspect and clean them before restarting. The external `timeout` bounds relay lifetime.
 - The VNC bridge stays bound to `127.0.0.1` QEMU ports only; the proxy refuses non-local
   targets and closes with explicit policy codes (4401 unauthenticated,
   4500–4503 hypervisor/connection failures).

@@ -8,7 +8,7 @@ import Dashboard from './pages/Dashboard'
 import VpsList from './pages/VpsList'
 import CreateVps from './pages/CreateVps'
 import VpsDetail from './pages/VpsDetail'
-import VpsSsh from './pages/VpsSsh'
+import VpsSshx from './pages/VpsSshx'
 import Nodes from './pages/Nodes'
 import Templates from './pages/Templates'
 import Networks from './pages/Networks'
@@ -69,10 +69,10 @@ export default function App() {
         }
       />
       <Route
-        path="/vps/:id/ssh"
+        path="/vps/:id/sshx"
         element={
           <Protected>
-            <VpsSsh />
+            <VpsSshx />
           </Protected>
         }
       />

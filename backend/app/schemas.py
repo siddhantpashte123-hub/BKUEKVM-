@@ -297,6 +297,15 @@ class ConsoleSessionOut(BaseModel):
     kind: str = "vnc"
 
 
+class SshxSessionOut(BaseModel):
+    """One-time hosted sshx.io URL; deliberately never persisted by BLUEKVM."""
+
+    sshx_url: str
+    vps_id: int
+    expires_at: datetime
+    kind: str = "sshx"
+
+
 class GuestIpOut(BaseModel):
     ip_address: str
     source: str = ""

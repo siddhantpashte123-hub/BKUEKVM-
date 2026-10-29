@@ -3,10 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..database import get_db
 from ..deps import (
     can_access_vps,
@@ -27,6 +28,7 @@ from ..models import (
 from ..schemas import (
     ConsoleSessionOut,
     GuestIpOut,
+    SshxSessionOut,
     LifecycleRequest,
     Message,
     TaskOut,
@@ -43,6 +45,7 @@ from ..security import (
     hash_token,
 )
 from ..services.audit import record_audit
+from ..services.sshx_sessions import SshxSessionError, sshx_sessions
 from ..virtualization.manager import manager
 
 router = APIRouter(prefix="/api/vps", tags=["vps"])
@@ -337,39 +340,94 @@ def create_console_session(
     )
 
 
-@router.post("/{public_id}/ssh-session", response_model=ConsoleSessionOut)
-def create_ssh_session(
+@router.post("/{public_id}/sshx-session", response_model=SshxSessionOut)
+def create_sshx_session(
     public_id: str,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
     user=Depends(require_permission("vps:read")),
 ):
-    """Mint a single-use token for the browser SSH terminal (/ws/ssh)."""
+    """Open one owner-authorized, short-lived hosted sshx.io guest terminal.
+
+    sshx.io URLs are bearer links. BLUEKVM creates the URL only after the
+    normal per-VPS access check, returns it once to this request, and never
+    writes it to the database, audit data, logs, or a frontend store.
+    """
     vps = _get_visible(request, db, user, public_id)
     if not can_access_vps(request, user, vps):
-        raise HTTPException(403, "Not authorized for this VPS console")
-    if vps.status not in (VPSStatus.RUNNING,):
-        raise HTTPException(409, "VPS is not running — start it before opening SSH")
+        raise HTTPException(403, "Not authorized for this VPS terminal")
+    if vps.status != VPSStatus.RUNNING:
+        raise HTTPException(409, "VPS is not running — start it before opening SSHX")
     if not vps.init_password_encrypted:
         raise HTTPException(
             409,
-            "This VPS has no stored password; the browser terminal needs a "
-            "provisioned credential (public-key-only VMs are not supported here)",
+            "This VPS has no stored password; SSHX requires the credential set during provisioning.",
         )
-    token = generate_token()
-    expires = console_expiry(60)
+
+    driver = manager.get_driver(vps.node)
+    host = vps.ip_address or ""
+    try:
+        fresh_ip = driver.get_guest_ip(vps.name, vps.mac_address)
+    except Exception:
+        fresh_ip = ""
+    if fresh_ip:
+        host = fresh_ip
+        if host != vps.ip_address:
+            vps.ip_address = host
+            db.commit()
+    if not host:
+        raise HTTPException(
+            409,
+            "Guest IP address is not available yet. Wait for DHCP lease / qemu-guest-agent, then retry.",
+        )
+
+    try:
+        password = decrypt_secret(vps.init_password_encrypted)
+    except ValueError as exc:
+        raise HTTPException(409, "Stored VPS credential cannot be decrypted") from exc
+
+    expires = console_expiry(settings.sshx_session_ttl_seconds)
+    # No usable token is returned to the browser: the DB row is lifecycle/audit
+    # state only. Its random hash remains non-replayable if the DB is exposed.
     session = ConsoleSession(
-        token_hash=hash_token(token), vps_id=vps.id, user_id=user.id,
-        expires_at=expires, kind="ssh",
+        token_hash=hash_token(generate_token()),
+        vps_id=vps.id,
+        user_id=user.id,
+        expires_at=expires,
+        used_at=datetime.now(timezone.utc),
+        kind="sshx",
     )
     db.add(session)
     db.commit()
-    record_audit(db, action="ssh.open", user_id=user.id, resource_type="vps",
-                 resource_id=vps.public_id, ip_address=client_ip(request))
-    return ConsoleSessionOut(
-        console_token=token, vps_id=vps.id, expires_at=expires,
-        ws_path=f"/ws/ssh?token={token}", kind="ssh",
+    db.refresh(session)
+
+    try:
+        sshx_url = sshx_sessions.start(
+            session_id=session.id,
+            vps_name=vps.name,
+            host=host,
+            username=vps.cloud_init_user or "ubuntu",
+            password=password,
+            expires_at=expires,
+        )
+    except SshxSessionError as exc:
+        session.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
+    record_audit(
+        db,
+        action="sshx.open",
+        user_id=user.id,
+        resource_type="vps",
+        resource_id=vps.public_id,
+        ip_address=client_ip(request),
+        details={"session_id": session.id, "ttl_seconds": settings.sshx_session_ttl_seconds},
     )
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return SshxSessionOut(sshx_url=sshx_url, vps_id=vps.id, expires_at=expires)
 
 
 @router.get("/{public_id}/guest-ip", response_model=GuestIpOut)

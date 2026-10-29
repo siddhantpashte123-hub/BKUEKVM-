@@ -315,12 +315,59 @@ prepare_storage_permissions() {
   grp="$(qemu_group)"
   [ -n "$grp" ] || return 0
   local dir
+  # QEMU needs traverse permission on the root and container directories too;
+  # fixing only a qcow2 file still fails with EACCES during domain start.
+  for dir in "$DATA_DIR" "$DATA_DIR/vms" "$DATA_DIR/templates" "$DATA_DIR/backups"; do
+    [ -d "$dir" ] || continue
+    chgrp "$grp" "$dir" 2>/dev/null || true
+    chmod 2750 "$dir" 2>/dev/null || true
+  done
   for dir in "$DATA_DIR/vms" "$DATA_DIR/templates" "$DATA_DIR/backups"; do
     [ -d "$dir" ] || continue
     chgrp -R "$grp" "$dir" 2>/dev/null || true
     find "$dir" -type d -exec chmod 2750 {} + 2>/dev/null || true
     find "$dir" -type f -exec chmod 660 {} + 2>/dev/null || true
   done
+}
+
+# Install the official, statically-linked sshx.io client in a root-owned
+# executable location. Hosted SSHX is an explicit panel feature: failure to
+# fetch the client is actionable and must not produce a fake terminal URL.
+install_sshx_client() {
+  local target="/usr/local/bin/sshx" arch temp
+  if [ -x "$target" ]; then
+    "$target" --version >/dev/null 2>&1 && { ok "SSHX client available"; return 0; }
+    err "Existing SSHX executable failed its version check; refusing to overwrite it"
+    return 1
+  fi
+  [ ! -e "$target" ] || { err "Existing $target is not executable; refusing to overwrite it"; return 1; }
+  case "$(uname -m)" in
+    x86_64) arch=x86_64 ;;
+    aarch64|arm64) arch=aarch64 ;;
+    *) err "SSHX binary unavailable for this architecture"; return 1 ;;
+  esac
+  temp="$(mktemp -d)" || return 1
+  chmod 700 "$temp"
+  info "Downloading the official hosted SSHX client"
+  # Upstream currently publishes unversioned binaries without checksums. Fetch
+  # via HTTPS and extract only the expected file, never execute a download script.
+  if ! curl --fail --silent --show-error --location --max-time 120 \
+    "https://s3.amazonaws.com/sshx/sshx-${arch}-unknown-linux-musl.tar.gz" -o "$temp/sshx.tar.gz" ||
+    ! tar -xOzf "$temp/sshx.tar.gz" sshx > "$temp/sshx" || [ ! -s "$temp/sshx" ]; then
+    rm -rf "$temp"
+    err "Could not download/extract the official SSHX client"
+    return 1
+  fi
+  chmod 755 "$temp" "$temp/sshx"
+  # Never execute a freshly downloaded third-party binary as root.
+  if ! runuser -u bluekvm -- "$temp/sshx" --version >/dev/null 2>&1; then
+    rm -rf "$temp"
+    err "Downloaded SSHX client failed its version check"
+    return 1
+  fi
+  install -o root -g root -m 755 "$temp/sshx" "$target"
+  rm -rf "$temp"
+  ok "SSHX client installed"
 }
 
 # The apt-provided python3-libvirt binding lives in the system dist-packages

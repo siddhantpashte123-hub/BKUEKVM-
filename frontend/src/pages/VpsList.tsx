@@ -223,9 +223,9 @@ export default function VpsList() {
                     )}
                     <button
                       type="button"
-                      title="Open SSH in new tab"
+                      title="Open SSHX in new tab"
                       disabled={vps.status !== 'running'}
-                      onClick={() => window.open(`/vps/${vps.public_id}/ssh`, '_blank', 'noopener')}
+                      onClick={() => window.open(`/vps/${vps.public_id}/sshx`, '_blank', 'noopener')}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-primary/15 hover:text-electric disabled:opacity-40"
                     >
                       <SquareTerminal className="h-4 w-4" />

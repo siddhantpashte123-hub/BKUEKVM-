@@ -304,7 +304,7 @@ class ConsoleSession(Base):
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     vps_id: Mapped[int] = mapped_column(ForeignKey("vps.id"), index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
-    # "vnc" = legacy noVNC recovery console, "ssh" = browser SSH terminal
+    # "vnc" = legacy recovery bridge, "sshx" = hosted owner-issued SSHX relay
     kind: Mapped[str] = mapped_column(String(8), default="vnc", server_default="vnc")
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

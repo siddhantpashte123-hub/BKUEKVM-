@@ -18,7 +18,9 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
 ProtectHome=true
-ReadWritePaths=/var/lib/bluekvm /var/log/bluekvm
+RuntimeDirectory=bluekvm
+RuntimeDirectoryMode=0700
+ReadWritePaths=/var/lib/bluekvm /var/log/bluekvm /run/bluekvm
 LimitNOFILE=65536
 
 [Install]
