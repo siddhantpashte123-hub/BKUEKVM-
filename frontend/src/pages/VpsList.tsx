@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Cpu,
-  ExternalLink,
   HardDrive,
   MemoryStick,
   Play,
@@ -10,6 +9,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  SquareTerminal,
   Square,
   Trash2,
 } from 'lucide-react'
@@ -221,11 +221,15 @@ export default function VpsList() {
                         </IconBtn>
                       </>
                     )}
-                    <Link to={`/vps/${vps.public_id}/console`} title="Open console">
-                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-primary/15 hover:text-electric">
-                        <ExternalLink className="h-4 w-4" />
-                      </span>
-                    </Link>
+                    <button
+                      type="button"
+                      title="Open SSH in new tab"
+                      disabled={vps.status !== 'running'}
+                      onClick={() => window.open(`/vps/${vps.public_id}/ssh`, '_blank', 'noopener')}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-primary/15 hover:text-electric disabled:opacity-40"
+                    >
+                      <SquareTerminal className="h-4 w-4" />
+                    </button>
                     {can('vps:manage') && (
                       <IconBtn title="Delete" danger disabled={busy} onClick={() => setToDelete(vps)}>
                         <Trash2 className="h-4 w-4" />

@@ -142,3 +142,17 @@ class HypervisorDriver(ABC):
 
     @abstractmethod
     def close(self) -> None: ...
+
+    # ------------------------------------------------- optional capabilities
+    # Concrete defaults keep test doubles / alternative drivers working
+    # without forcing every implementation to override them.
+    def get_guest_ip(self, name: str, mac: str = "") -> str:
+        """Return the guest's first IPv4 address, or '' when unknown."""
+        return ""
+
+    def ensure_default_network(self) -> str:
+        """Ensure the default NAT network exists and is started.
+
+        Returns one of: active | defined | unsupported | unavailable.
+        """
+        return "unsupported"

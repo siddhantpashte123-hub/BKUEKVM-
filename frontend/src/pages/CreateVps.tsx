@@ -4,9 +4,11 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Copy,
   Cpu,
   Globe,
   HardDrive,
+  KeyRound,
   MemoryStick,
   MonitorCog,
   Server,
@@ -45,8 +47,12 @@ export default function CreateVps() {
     ip_address: '',
     mac_address: '',
     ssh_public_key: '',
+    cloud_init_password: '',
+    confirm_password: '',
     node_id: '' as number | '', // empty = automatic placement
   })
+  const [generatedPw, setGeneratedPw] = useState<string | null>(null)
+  const [createdId, setCreatedId] = useState('')
 
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
@@ -90,6 +96,12 @@ export default function CreateVps() {
       if (form.mac_address && !/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/.test(form.mac_address))
         return 'MAC address must look like 52:54:00:ab:cd:ef'
     }
+    if (step === 3) {
+      if (form.cloud_init_password) {
+        if (form.cloud_init_password.length < 8) return 'VM password must be at least 8 characters'
+        if (form.cloud_init_password !== form.confirm_password) return 'Passwords do not match'
+      }
+    }
     return ''
   }
 
@@ -107,8 +119,9 @@ export default function CreateVps() {
     setSubmitting(true)
     setSubmitError('')
     try {
+      const { confirm_password: _confirm, ...rest } = form
       const payload = {
-        ...form,
+        ...rest,
         hostname: form.hostname || form.name,
         owner_id: form.owner_id || undefined,
         network_id: form.network_id || undefined,
@@ -116,8 +129,14 @@ export default function CreateVps() {
         expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : undefined,
         idempotency_key: idempotencyKey,
       }
-      const created = await api.post<{ public_id: string }>('/api/vps', payload)
-      navigate(`/vps/${created.public_id}`)
+      const created = await api.post<{ public_id: string; generated_password?: string | null }>('/api/vps', payload)
+      setCreatedId(created.public_id)
+      if (created.generated_password) {
+        // Shown exactly once — the panel never returns it again.
+        setGeneratedPw(created.generated_password)
+      } else {
+        navigate(`/vps/${created.public_id}`)
+      }
     } catch (err) {
       setSubmitError(err instanceof ApiError ? err.message : 'Provisioning request failed')
     } finally {
@@ -126,6 +145,42 @@ export default function CreateVps() {
   }
 
   if (loadError) return <ErrorState message={loadError} />
+
+  if (generatedPw) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <PageHeader title="VPS provisioning started" description="Save the generated credential now — it is shown only once." />
+        <Card>
+          <div className="flex items-center gap-2 text-white">
+            <KeyRound className="h-5 w-5 text-electric" />
+            <h2 className="font-semibold">Generated VM password</h2>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4">
+            <code className="break-all font-mono text-base text-warning">{generatedPw}</code>
+            <Button
+              variant="secondary"
+              onClick={() => navigator.clipboard?.writeText(generatedPw)}
+            >
+              <Copy className="h-4 w-4" /> Copy
+            </Button>
+          </div>
+          <dl className="mt-4 grid gap-2 text-sm text-muted">
+            <div>Login user: <span className="text-white">ubuntu</span></div>
+            <div>Use: browser SSH terminal on the VPS page, or any SSH client once the guest has an IP.</div>
+          </dl>
+          <p className="mt-4 text-xs text-muted">
+            The password is stored encrypted on the panel and used server-side by the SSH terminal. It cannot be
+            retrieved from the API later.
+          </p>
+          <div className="mt-6">
+            <Button onClick={() => navigate(`/vps/${createdId}`)}>
+              Continue to VPS <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -247,12 +302,34 @@ export default function CreateVps() {
               <Input label="MAC address (optional, auto-generated if empty)" placeholder="52:54:00:…" value={form.mac_address} onChange={(e) => set('mac_address', e.target.value)} />
             </div>
             <Textarea
-              label="SSH public key"
+              label="SSH public key (optional)"
               placeholder="ssh-ed25519 AAAA… user@laptop"
               value={form.ssh_public_key}
               onChange={(e) => set('ssh_public_key', e.target.value)}
             />
-            <p className="text-xs text-muted">The host network and other tenants' machines are never exposed to the guest.</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                label="VM login password (blank = generate one)"
+                type="password"
+                placeholder="min 8 characters"
+                autoComplete="new-password"
+                value={form.cloud_init_password}
+                onChange={(e) => set('cloud_init_password', e.target.value)}
+                hint="Used by cloud-init and the browser SSH terminal"
+              />
+              <Input
+                label="Confirm password"
+                type="password"
+                placeholder="repeat the password"
+                autoComplete="new-password"
+                value={form.confirm_password}
+                onChange={(e) => set('confirm_password', e.target.value)}
+              />
+            </div>
+            <p className="text-xs text-muted">
+              Leave both blank and the panel generates a strong password, shown once after creation. The credential is
+              stored encrypted and never sent back to the browser again.
+            </p>
           </div>
         )}
 
@@ -303,6 +380,10 @@ export default function CreateVps() {
               <ReviewItem label="IP assignment" value={form.ip_address || 'DHCP'} />
               <ReviewItem label="Node" value={form.node_id ? nodes.find((n) => n.id === form.node_id)?.name ?? '—' : 'Automatic'} />
               <ReviewItem label="SSH key" value={form.ssh_public_key ? 'Configured' : 'Not set'} />
+              <ReviewItem
+                label="Login password"
+                value={form.cloud_init_password ? 'Set (encrypted at rest)' : 'Random — shown once after create'}
+              />
             </dl>
             <div className="rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm text-warning">
               Provisioning runs as a background job: disk creation, cloud-init, startup and verification. You can watch

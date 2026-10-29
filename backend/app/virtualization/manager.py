@@ -57,17 +57,26 @@ class DriverManager:
     # ------------------------------------------------------------ health --
     def health_check(self, db: Session, node: Node) -> Node:
         caps = detect_capabilities()
-        node.kvm_ready = caps.kvm_available
+        if node.is_local:
+            # Local node: the host's own /dev/kvm open() probe is authoritative.
+            node.kvm_ready = caps.kvm_available
         driver = self.get_driver(node)
         try:
-            info = driver.test_connection()
+            # External nodes own their KVM stack — never gate them on this
+            # host's local /dev/kvm capabilities.
+            info = driver.test_connection(verify_local_kvm=node.is_local)
             node.status = NodeStatus.ONLINE
             node.last_error = ""
+            # A successful remote libvirt handshake proves KVM readiness there.
+            node.kvm_ready = True
             node.hypervisor_version = info.get("libvirt_version", "")
             node_info = info.get("node", {})
             node.cpu_cores = node_info.get("cpus", node.cpu_cores) or node.cpu_cores
             node.ram_mb = node_info.get("memory_mb", node.ram_mb) or node.ram_mb
             node.capabilities = __import__("json").dumps(info.get("capabilities", {}))
+            if node.is_local:
+                network_state = driver.ensure_default_network()
+                log.info("default network on node %s: %s", node.name, network_state)
             self._sync_pools_and_networks(db, node, driver)
         except KVMUnavailableError as exc:
             node.status = NodeStatus.OFFLINE

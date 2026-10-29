@@ -68,21 +68,42 @@ def _nested_status() -> tuple[bool, str]:
     return False, "kvm_intel/kvm_amd module parameters not exposed"
 
 
+def _probe_kvm_device() -> tuple[bool, str]:
+    """Open /dev/kvm for real instead of relying on os.access.
+
+    A device node can be visible yet unusable: container device cgroups,
+    seccomp or restrictive mounts reject open() even when stat/access look
+    fine. Only an actual open(O_RDWR) proves QEMU will be able to use KVM.
+    """
+    if not os.path.exists("/dev/kvm"):
+        if not _cpu_vmx_svm():
+            return False, (
+                "CPU virtualization extensions (VMX/SVM) not exposed to this host"
+            )
+        return False, (
+            "CPU supports virtualization but /dev/kvm is missing "
+            "(KVM modules not loaded or nested virt disabled)"
+        )
+    try:
+        fd = os.open("/dev/kvm", os.O_RDWR)
+    except OSError as exc:
+        detail = exc.strerror or str(exc)
+        return False, (
+            f"/dev/kvm exists but cannot be opened ({detail}). "
+            "The container device cgroup/seccomp policy is blocking KVM access."
+        )
+    else:
+        os.close(fd)
+        if not os.access("/dev/kvm", os.R_OK | os.W_OK):
+            return False, "/dev/kvm opens for root but is not read/writable for the hypervisor group (libvirt/kvm)"
+        return True, "/dev/kvm present and openable (O_RDWR probe succeeded)"
+
+
 def detect_capabilities() -> HostCapabilities:
     caps = HostCapabilities(arch=platform.machine() or "unknown")
 
-    # KVM device
-    if os.path.exists("/dev/kvm"):
-        if os.access("/dev/kvm", os.R_OK | os.W_OK):
-            caps.kvm_available = True
-            caps.kvm_reason = "/dev/kvm present and accessible"
-        else:
-            caps.kvm_reason = "/dev/kvm exists but is not read/writable (check permissions / libvirt group)"
-    else:
-        if not _cpu_vmx_svm():
-            caps.kvm_reason = "CPU virtualization extensions (VMX/SVM) not exposed to this host"
-        else:
-            caps.kvm_reason = "CPU supports virtualization but /dev/kvm is missing (KVM modules not loaded or nested virt disabled)"
+    # KVM device — real open() probe, not just a permission bit check
+    caps.kvm_available, caps.kvm_reason = _probe_kvm_device()
 
     caps.nested_virtualization, caps.nested_detail = _nested_status()
 

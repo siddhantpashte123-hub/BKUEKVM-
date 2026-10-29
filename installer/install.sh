@@ -91,12 +91,19 @@ do_install() {
     command -v npm >/dev/null || die "Node.js/npm is required to build the frontend"
   fi
   start_libvirt
+  configure_container_hypervisor
+  # Reload daemons when the container profile changed qemu.conf
+  if is_container && [ -f /etc/libvirt/qemu.conf ]; then
+    _spawn_libvirt_daemons 2>/dev/null || true
+  fi
+  ensure_default_network
   ok "System dependencies installed"
 
   # ------------------------------------------------------------- users/dirs --
   id bluekvm >/dev/null 2>&1 || useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin bluekvm
   ensure_service_groups
   install -d -o bluekvm -g bluekvm "$INSTALL_DIR" "$DATA_DIR/vms" "$DATA_DIR/templates" "$DATA_DIR/backups" "$LOG_DIR"
+  prepare_storage_permissions
   ok "Directories and service account ready"
 
   # ------------------------------------------------------------- application --

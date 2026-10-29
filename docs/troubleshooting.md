@@ -113,6 +113,44 @@ sudo systemctl restart bluekvm-worker bluekvm-api
 - The panel never edits the host's primary network configuration automatically.
   Bridged networking requires an existing host bridge (e.g. `br0`).
 
+## Containers without systemd (Codespaces, Docker, WSL)
+
+The installer now handles these automatically, but the same steps work manually
+after a daemon or image reset:
+
+1. **Start libvirt without an init system** — monolithic daemon first, then the
+   modular set:
+   ```bash
+   mkdir -p /run/libvirt
+   libvirtd -d 2>/dev/null || for d in virtlogd virtlockd virtnodedevd \
+     virtnetworkd virtstoraged virtqemud virtproxyd; do
+     command -v "$d" >/dev/null && pgrep -x "$d" >/dev/null || "$d" --daemon
+   done
+   ls -l /run/libvirt/libvirt-sock
+   ```
+2. **PTY / storage "Permission denied"** — in a single-tenant test container,
+   run QEMU as root via an idempotent `/etc/libvirt/qemu.conf` override
+   (`user = "root"` / `group = "root"`, marker `BLUEKVM container override`) and
+   relax devpts: `mount -o remount,ptmxmode=0666 /dev/pts`. Never do this on a
+   multi-tenant production host.
+3. **Default NAT network** — the installer defines and starts it; manually:
+   `virsh -c qemu:///system net-define <net.xml> && virsh ... net-start default`.
+   Unprivileged containers lacking `CAP_NET_ADMIN` can't start it; the driver
+   then falls back to libvirt `type=user` networking.
+4. **Storage access** — VM disks/seed ISOs are chgrp'ed to the QEMU group with
+   `2750`/`660` modes automatically; verify with
+   `ls -l /var/lib/bluekvm/vms/<name>/`.
+
+## Browser SSH terminal
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `409 VPS is not running` | VM stopped or still provisioning | Start the VPS and wait for `running` |
+| `4502 Guest IP not available yet` | No DHCP lease and no qemu-guest-agent report | Wait a minute and retry; check `virsh net-dhcp-leases default`; install `qemu-guest-agent` in the image for faster discovery |
+| `4503 SSH connection failed` | Guest sshd not ready, wrong port, or firewall | Confirm cloud-init finished and port 22 is open; use the recovery VNC API if the guest is unreachable over the network |
+| `Login incorrect` in the guest | The credential belongs to the default cloud-init user | Log in as `ubuntu` (not `root`); the password is the one set at creation or the one shown once when generated |
+| Token rejected on reconnect | Tokens are single-use and expire in 60s | Click Reconnect to mint a fresh token |
+
 ## Resetting administrator access
 
 ```bash

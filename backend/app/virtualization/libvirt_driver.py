@@ -6,6 +6,7 @@ then honestly report KVM as unavailable.
 """
 from __future__ import annotations
 
+import logging
 import os
 import shutil
 import subprocess
@@ -14,6 +15,17 @@ import uuid
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from xml.sax.saxutils import escape
+
+log = logging.getLogger("bluekvm.virt.libvirt")
+
+DEFAULT_NETWORK_XML = """<network>
+  <name>default</name>
+  <forward mode='nat'/>
+  <bridge name='virbr0' stp='on' delay='0'/>
+  <ip address='192.168.122.1' netmask='255.255.255.0'>
+    <dhcp><range start='192.168.122.2' end='192.168.122.254'/></dhcp>
+  </ip>
+</network>"""
 
 from .base import (
     HypervisorDriver,
@@ -39,6 +51,69 @@ LIBVIRT_STATE_MAP = {
     6: PowerState.CRASHED,
     7: PowerState.PAUSED,
 }
+
+
+def format_libvirt_version(version: int) -> str:
+    """libvirt encodes versions as a single integer (e.g. 10000000 -> 10.0.0).
+
+    conn.getVersion() returns an int, not an iterable — iterating it raises
+    "'int' object is not iterable", which only surfaced on a real libvirtd.
+    """
+    try:
+        value = int(version)
+    except (TypeError, ValueError):
+        return str(version)
+    return f"{value // 1_000_000}.{(value // 1_000) % 1_000}.{value % 1_000}"
+
+
+def hypervisor_gid() -> int | None:
+    """Resolve the gid QEMU drops privileges to (qemu.conf group, then common names)."""
+    import grp
+
+    candidates: list[str] = []
+    qemu_conf = Path("/etc/libvirt/qemu.conf")
+    if qemu_conf.exists():
+        for line in qemu_conf.read_text(encoding="utf-8", errors="ignore").splitlines():
+            line = line.strip()
+            if line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            if key.strip() == "group":
+                name = value.strip().strip('"').strip("'")
+                if name and name not in candidates:
+                    candidates.append(name)
+    candidates.extend(["libvirt-qemu", "kvm", "libvirt"])
+    for name in candidates:
+        try:
+            return grp.getgrnam(name).gr_gid
+        except KeyError:
+            continue
+    return None
+
+
+def grant_hypervisor_access(vm_dir: Path, *files: Path) -> None:
+    """Give the QEMU group access to VM storage.
+
+    On normal systemd hosts libvirt's dynamic DAC relabels files itself and
+    this is a harmless no-op. In manually-started daemon containers that
+    mechanism is absent, so without this QEMU fails with
+    "Cannot access storage file ... Permission denied".
+    """
+    gid = hypervisor_gid()
+    try:
+        vm_dir.mkdir(parents=True, exist_ok=True)
+        if gid is not None:
+            os.chown(vm_dir, -1, gid)
+            for path in files:
+                if path.exists():
+                    os.chown(path, -1, gid)
+        os.chmod(vm_dir, 0o2750)  # setgid: new files inherit the hypervisor group
+        for path in files:
+            if path.exists():
+                os.chmod(path, 0o660)
+    except (PermissionError, OSError):
+        # Non-root panel: rely entirely on libvirt's dynamic ownership.
+        pass
 
 
 def generate_mac() -> str:
@@ -103,9 +178,11 @@ class LibvirtDriver(HypervisorDriver):
         # Never embed credentials into error messages or logs
         return self.uri.split("@")[-1] if "@" in self.uri else self.uri
 
-    def test_connection(self) -> dict:
+    def test_connection(self, verify_local_kvm: bool = True) -> dict:
         caps = detect_capabilities()
-        if not caps.kvm_available:
+        # The local /dev/kvm probe only applies to the node running this
+        # process. External nodes (qemu+ssh://...) own their own KVM stack.
+        if verify_local_kvm and not caps.kvm_available:
             raise KVMUnavailableError(
                 f"KVM is not usable on this node: {caps.kvm_reason}. "
                 "Enable nested virtualization on your host, or register a KVM-capable node."
@@ -113,7 +190,7 @@ class LibvirtDriver(HypervisorDriver):
         conn = self._connect()
         info = {
             "hostname": conn.getHostname(),
-            "libvirt_version": ".".join(str(x) for x in conn.getVersion()),
+            "libvirt_version": format_libvirt_version(conn.getVersion()),
             "hypervisor": conn.getType(),
             "capabilities": caps.to_dict(),
         }
@@ -164,7 +241,7 @@ class LibvirtDriver(HypervisorDriver):
     <disk type='file' device='cdrom'>
       <driver name='qemu' type='raw'/>
       <source file='{escape(seed_path)}'/>
-      <target dev='sr0' bus='sata'/>
+      <target dev='sda' bus='sata'/>
       <readonly/>
     </disk>
     {interface}
@@ -214,7 +291,6 @@ class LibvirtDriver(HypervisorDriver):
         result = subprocess.run(resize, capture_output=True, text=True, timeout=180, check=False)
         if result.returncode != 0:
             raise HypervisorError(f"qemu-img resize failed: {result.stderr.strip()}")
-        os.chmod(disk_path, 0o600)
 
         mac = spec.mac_address or generate_mac()
         build_seed_iso(
@@ -227,6 +303,10 @@ class LibvirtDriver(HypervisorDriver):
             mac_address=mac,
             use_dhcp=not spec.mac_address,
         )
+
+        # Hand disk + seed ISO to the QEMU group so the dropped-privilege
+        # process can open them in containers without libvirt dynamic DAC.
+        grant_hypervisor_access(vm_dir, disk_path, seed_path)
 
         xml = self._domain_xml(spec, str(disk_path), str(seed_path), mac)
         conn = self._connect()
@@ -438,6 +518,85 @@ class LibvirtDriver(HypervisorDriver):
                 )
             )
         return networks
+
+    # ----------------------------------------------------- guest addressing
+    @staticmethod
+    def _first_ipv4(address_map: dict) -> str:
+        for iface in address_map.values():
+            if not isinstance(iface, dict):
+                continue
+            for addr in iface.get("addrs") or []:
+                ip = addr.get("addr", "")
+                if ip and ":" not in ip and not ip.startswith("127."):
+                    return ip
+        return ""
+
+    def get_guest_ip(self, name: str, mac: str = "") -> str:
+        """Discover the guest IPv4 address.
+
+        Order: qemu-guest-agent -> libvirt lease table -> per-network
+        DHCP leases. Always best-effort: returns '' instead of raising so
+        callers can surface an honest "address not available yet" state.
+        """
+        try:
+            import libvirt  # noqa: PLC0415
+
+            domain = self._lookup(name)
+            for source in (
+                libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_AGENT,
+                libvirt.VIR_DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE,
+            ):
+                try:
+                    ip = self._first_ipv4(domain.interfaceAddresses(source, 0))
+                    if ip:
+                        return ip
+                except Exception:  # agent not ready / no lease yet
+                    continue
+            conn = self._connect()
+            mac_l = mac.lower()
+            for net in conn.listAllNetworks(0):
+                try:
+                    for lease in net.DHCPLeases():
+                        if mac_l and lease.get("mac", "").lower() != mac_l:
+                            continue
+                        ip = lease.get("ipaddr", "")
+                        if ip and ":" not in ip:
+                            return ip
+                except Exception:
+                    continue
+        except HypervisorError:
+            raise
+        except Exception as exc:  # discovery must never break provisioning
+            log.debug("guest IP discovery failed for %s: %s", name, exc)
+        return ""
+
+    def ensure_default_network(self) -> str:
+        """Define + start the standard 'default' NAT network if missing."""
+        try:
+            conn = self._connect()
+            try:
+                net = conn.networkLookupByName("default")
+            except Exception:
+                try:
+                    net = conn.networkDefineXML(DEFAULT_NETWORK_XML)
+                except Exception as exc:
+                    log.warning("could not define default network: %s", exc)
+                    return "unavailable"
+            try:
+                net.setAutostart(True)
+            except Exception:
+                pass
+            if not net.isActive():
+                try:
+                    net.create()
+                except Exception as exc:
+                    # Typical in unprivileged containers (CAP_NET_ADMIN missing)
+                    log.warning("default network defined but not startable: %s", exc)
+                    return "defined"
+            return "active"
+        except Exception as exc:
+            log.warning("ensure_default_network failed: %s", exc)
+            return "unavailable"
 
     # ------------------------------------------------------------- snapshots
     def create_snapshot(self, name: str, snapshot_name: str) -> str:

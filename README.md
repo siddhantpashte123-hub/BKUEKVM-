@@ -4,7 +4,7 @@
 
 BLUEKVM PANNEL creates and manages **real KVM/QEMU virtual machines** through libvirt,
 with a pure **Black + Electric Blue** web dashboard, an interactive terminal installer,
-background provisioning, role-based access control and an authenticated noVNC web console.
+background provisioning, role-based access control and an authenticated browser SSH terminal.
 
 ---
 
@@ -64,8 +64,10 @@ through *Virtualization Nodes*. It never simulates a successful VM.
   idempotent submissions and server-side capacity validation.
 - **Durable background worker** — queued tasks with timestamped steps, logs and progress;
   safe restarts and duplicate-claim protection.
-- **Browser console** — noVNC over an authenticated WebSocket bridge with single-use
-  60-second tokens. VNC ports stay bound to localhost.
+- **Browser SSH terminal** — "Open SSH" launches an xterm.js terminal in a new tab over
+  an authenticated WebSocket bridge (asyncssh server-side, single-use 60-second tokens,
+  encrypted VM credentials, auto guest-IP discovery). A localhost-only VNC bridge remains
+  as an emergency recovery path; no raw SSH/VNC port is ever exposed.
 - **RBAC** — Super Administrator, Administrator, VPS Manager, Read-Only Viewer; per-VPS
   ownership scoping; session revocation and login history.
 - **OS templates** — curated Ubuntu/Debian cloud images with streamed download and
@@ -78,12 +80,12 @@ through *Virtualization Nodes*. It never simulates a successful VM.
 ## Architecture
 
 ```
-Browser (React + Vite + Tailwind, noVNC)
-   │  cookie auth + CSRF token, WebSocket console
+Browser (React + Vite + Tailwind, xterm.js)
+   │  cookie auth + CSRF token, WebSocket terminals
    ▼
 FastAPI (Uvicorn :8080)  ── systemd: bluekvm-api
    ├── REST routers (/api/...)
-   ├── console WebSocket proxy (/ws/console)
+   ├── SSH terminal WebSocket (/ws/ssh) + recovery VNC proxy (/ws/console)
    └── service layer (audit, metrics, templates, backups)
             │
    bluekvm-worker (systemd)  ── durable task queue in PostgreSQL
@@ -99,7 +101,7 @@ See [docs/architecture.md](docs/architecture.md) for details.
 
 ```
 ├── backend/            FastAPI app, libvirt driver, worker, Alembic, pytest
-├── frontend/           React + TypeScript + Vite + Tailwind, noVNC
+├── frontend/           React + TypeScript + Vite + Tailwind, xterm.js
 ├── installer/          install.sh (menu), uninstall.sh, status.sh, lib.sh
 ├── deployment/         systemd units, nginx TLS example
 ├── docs/               installation, troubleshooting, security, updates

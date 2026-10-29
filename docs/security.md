@@ -47,13 +47,21 @@ sessions re-check VPS ownership before minting a token.
   is never returned to the browser or written to logs. A redaction filter strips secret
   fields from log records.
 
-## Web console
+## Browser terminals (SSH) and the recovery VNC bridge
 
-- Browsers cannot send headers on WebSocket handshakes, so console access uses a
-  single-use, 60-second token bound to one user and one VPS (`console_sessions`).
-- QEMU VNC stays bound to `127.0.0.1`; the backend bridges bytes after authorization.
-- The proxy refuses non-local console targets and closes with explicit policy codes
-  (4401 unauthenticated, 4500–4503 hypervisor/connection failures).
+- Browsers cannot send headers on WebSocket handshakes, so terminal access uses a
+  single-use, 60-second token bound to one user and one VPS (`console_sessions.kind`
+  distinguishes `ssh` from `vnc`).
+- VM passwords are generated or collected at provisioning time, Fernet-encrypted in the
+  `vps.init_password_encrypted` column, and decrypted only inside the SSH WebSocket
+  worker. They are never returned by any API (the create response carries a generated
+  password exactly once) and never reach browser JavaScript.
+- The SSH connection originates from the panel node toward the guest's private/NAT
+  address; no raw SSH or VNC port is exposed publicly. Guest host keys are not pinned
+  because guests live on the panel-owned private network and no key is persisted.
+- The VNC bridge stays bound to `127.0.0.1` QEMU ports only; the proxy refuses non-local
+  targets and closes with explicit policy codes (4401 unauthenticated,
+  4500–4503 hypervisor/connection failures).
 
 ## Data handling
 

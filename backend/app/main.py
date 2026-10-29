@@ -34,6 +34,7 @@ from .api import (
 from .bootstrap import run_bootstrap
 from .config import settings
 from .console.ws import router as console_router
+from .console.ssh_ws import router as ssh_router
 from .database import Base, SessionLocal, engine
 from .logging_config import configure_logging
 from .services.worker import embedded_worker
@@ -106,6 +107,7 @@ for module in (
 ):
     app.include_router(module.router)
 app.include_router(console_router)
+app.include_router(ssh_router)
 
 
 @app.exception_handler(HypervisorError)
