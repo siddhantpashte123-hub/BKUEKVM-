@@ -153,15 +153,15 @@ after a daemon or image reset:
    `2750`/`660` modes automatically; verify with
    `ls -l /var/lib/bluekvm/vms/<name>/`.
 
-## Browser SSH terminal
+## Hosted SSHX terminal
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `409 VPS is not running` | VM stopped or still provisioning | Start the VPS and wait for `running` |
-| `4502 Guest IP not available yet` | No DHCP lease and no qemu-guest-agent report | Wait a minute and retry; check `virsh net-dhcp-leases default`; install `qemu-guest-agent` in the image for faster discovery |
-| `4503 SSH connection failed` | Guest sshd not ready, wrong port, or firewall | Confirm cloud-init finished and port 22 is open; use the recovery VNC API if the guest is unreachable over the network |
-| `Login incorrect` in the guest | The credential belongs to the default cloud-init user | Log in as `ubuntu` (not `root`); the password is the one set at creation or the one shown once when generated |
-| Token rejected on reconnect | Tokens are single-use and expire in 60s | Click Reconnect to mint a fresh token |
+| `409 Guest IP address is not available yet` | No DHCP lease and no qemu-guest-agent report | Wait a minute and retry; check `virsh net-dhcp-leases default`; install `qemu-guest-agent` in the image for faster discovery |
+| `503 SSHX client is not installed` | Installer predates SSHX support or outbound installation failed | Re-run the latest installer update; it installs the official `/usr/local/bin/sshx` client |
+| SSHX page says guest login/connection failed | Guest sshd is not ready, port 22 is blocked, or its credential changed after provisioning | Wait for cloud-init; log in as `ubuntu` (not `root`) using the creation password. Use the localhost-only recovery bridge to repair an unreachable guest. |
+| SSHX link no longer works | Its local relay exited or the 15-minute owner-issued session TTL ended | Return to the panel and open a fresh SSHX session. Do not share the hosted URL. |
 
 ## Resetting administrator access
 

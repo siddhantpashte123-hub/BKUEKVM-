@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     default_bridge: str = ""
     default_network: str = "default"
 
+    # Hosted sshx.io sessions are bearer links: keep them short-lived and
+    # terminate the local relay process at expiry. The URL is never stored.
+    sshx_binary: str = "/usr/local/bin/sshx"
+    sshx_runtime_dir: str = "/run/bluekvm/sshx"
+    sshx_known_hosts_dir: str = "/var/lib/bluekvm/sshx-known-hosts"
+    sshx_session_ttl_seconds: int = 900
+
     log_level: str = "INFO"
     log_dir: str = "/var/log/bluekvm"
 

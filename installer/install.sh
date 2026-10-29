@@ -76,14 +76,14 @@ do_install() {
     apt-get update -y
     apt-get install -y --no-install-recommends \
       python3 python3-venv python3-pip python3-libvirt \
-      qemu-kvm qemu-utils libvirt-daemon-system libvirt-clients \
-      genisoimage cloud-image-utils \
+      qemu-kvm qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base \
+      genisoimage cloud-image-utils openssh-client \
       postgresql postgresql-contrib \
       nginx curl ca-certificates git rsync openssl \
       nodejs npm || die "Package installation failed."
   elif [ "$DISTRO_FAMILY" = "rhel" ]; then
     dnf install -y python3 python3-pip qemu-kvm libvirt libvirt-client libvirt-python3 \
-      qemu-img genisoimage postgresql-server nginx curl git rsync openssl nodejs npm \
+      qemu-img genisoimage dnsmasq openssh-clients postgresql-server nginx curl git rsync openssl nodejs npm \
       || die "Package installation failed."
   else
     warn "Unrecognized distribution ($DISTRO). Installing runtime dependencies anyway."
@@ -124,6 +124,8 @@ do_install() {
   fi
   install -d -m 755 "$INSTALL_DIR/installer"
   cp -f "$SCRIPT_DIR"/*.sh "$INSTALL_DIR/installer/" 2>/dev/null || true
+
+  install_sshx_client || die "SSHX client installation failed. Check outbound access to https://sshx.io and re-run."
 
   ensure_python
   ok "Using Python interpreter: $PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
@@ -268,7 +270,11 @@ if node:
 PY
   ) || warn "Node probe failed — open Virtualization Nodes and click Verify connection"
 
+  # The recursive application ownership pass is intentionally followed by a
+  # final QEMU DAC pass: otherwise a repeat installer run changes VM disks
+  # back to bluekvm:bluekvm and QEMU cannot boot an existing guest.
   chown -R bluekvm:bluekvm "$DATA_DIR" "$LOG_DIR" "$INSTALL_DIR" 2>/dev/null || true
+  prepare_storage_permissions
 
   echo
   printf "%b" "${C_BLUE_BOLD}========================================${C_RESET}\n"

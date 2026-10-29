@@ -131,9 +131,11 @@ export default function VpsDetail() {
           <div className="flex flex-wrap gap-2">
             <Button
               variant="secondary"
-              onClick={() => window.open(`/vps/${vps.public_id}/ssh`, '_blank', 'noopener')}
+              disabled={vps.status !== 'running'}
+              title={vps.status !== 'running' ? 'Start the VPS before opening SSHX' : 'Open a short-lived SSHX terminal'}
+              onClick={() => window.open(`/vps/${vps.public_id}/sshx`, '_blank', 'noopener')}
             >
-              <SquareTerminal className="h-4 w-4" /> Open SSH
+              <SquareTerminal className="h-4 w-4" /> Open SSHX
             </Button>
             {can('vps:manage') && (
               <>
@@ -250,17 +252,17 @@ export default function VpsDetail() {
 
       {tab === 'SSH' && (
         <Card>
-          <h3 className="mb-2 font-semibold text-white">Browser SSH terminal</h3>
+          <h3 className="mb-2 font-semibold text-white">SSHX terminal</h3>
           <p className="mb-4 text-sm text-muted">
-            Opens an SSH session in a new browser tab over an authenticated WebSocket, using the credential provisioned
-            into this VPS. The password stays encrypted on the panel — it is never sent to your browser. Tokens are
-            single-use and expire in 60 seconds; no raw SSH or VNC port is exposed publicly.
+            Opens a hosted sshx.io terminal in a new browser tab. BLUEKVM verifies VPS access, keeps the provisioned
+            credential on the panel, and ends the SSHX relay automatically after 15 minutes. The URL is a bearer link:
+            it is issued once to you and is never saved by the panel, so do not share it.
           </p>
           <Button
-            onClick={() => window.open(`/vps/${vps.public_id}/ssh`, '_blank', 'noopener')}
+            onClick={() => window.open(`/vps/${vps.public_id}/sshx`, '_blank', 'noopener')}
             disabled={vps.status !== 'running'}
           >
-            <SquareTerminal className="h-4 w-4" /> Open SSH in new tab
+            <SquareTerminal className="h-4 w-4" /> Open SSHX in new tab
           </Button>
           {vps.status !== 'running' && (
             <p className="mt-3 text-xs text-muted">Start the VPS and wait for a DHCP lease before connecting.</p>

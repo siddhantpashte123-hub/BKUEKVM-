@@ -34,9 +34,9 @@ from .api import (
 from .bootstrap import run_bootstrap
 from .config import settings
 from .console.ws import router as console_router
-from .console.ssh_ws import router as ssh_router
 from .database import Base, SessionLocal, engine
 from .logging_config import configure_logging
+from .services.sshx_sessions import sshx_sessions
 from .services.worker import embedded_worker
 
 configure_logging()
@@ -67,6 +67,9 @@ async def lifespan(app: FastAPI):
         worker_task = asyncio.create_task(embedded_worker(stop_event))
     log.info("BLUEKVM PANNEL %s started on %s:%s (env=%s)", __version__, settings.host, settings.port, settings.env)
     yield
+    # Hosted SSHX links are owner-issued bearer URLs. End every local relay on
+    # panel shutdown so a restart cannot leave a terminal reachable.
+    sshx_sessions.shutdown()
     stop_event.set()
     if worker_task:
         worker_task.cancel()
@@ -107,7 +110,6 @@ for module in (
 ):
     app.include_router(module.router)
 app.include_router(console_router)
-app.include_router(ssh_router)
 
 
 @app.exception_handler(HypervisorError)

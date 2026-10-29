@@ -46,22 +46,17 @@ standalone `bluekvm-worker` service in production.
 The hypervisor remains the source of truth for power state; `DriverManager.sync_vps_state`
 reconciles database statuses against libvirt on every lifecycle transition.
 
-### Browser terminals
+### Hosted SSHX terminals
 
-The primary user-facing terminal is **SSH in the browser** (`app/console/ssh_ws.py`):
+A panel-authenticated user with access to a running VPS requests
+`POST /api/vps/{id}/sshx-session`. The server discovers the guest IP and launches
+an official SSHX client with a temporary OpenSSH launcher and private AskPass
+credential. The URL is returned once to a new tab and is not stored by the panel.
+SSHX links are bearer links: anyone possessing the URL can use it while active.
+The relay is stopped on expiry (15 minutes by default) or normal panel shutdown.
+The hosted service and a reachable guest SSH daemon are required.
 
-1. `POST /api/vps/{id}/ssh-session` (cookie auth + ownership check, VPS must be running)
-   mints a 60-second, single-use `kind=ssh` token.
-2. The `/vps/:id/ssh` page opens `/ws/ssh?token=...` with an xterm.js terminal.
-3. After validation the backend discovers the guest IPv4 (qemu-guest-agent, then
-   libvirt DHCP leases) and opens an **asyncssh** connection using the Fernet-encrypted
-   VM password stored at creation. The password never leaves the server.
-4. stdin/stdout and terminal resize events are pumped over the WebSocket; the token is
-   consumed on first use and revoked when the tab closes.
-
-A VNC bridge (`POST /console-session` → `/ws/console`) remains in the backend as an
-emergency recovery path — it connects only to localhost VNC ports — but is no longer
-linked from the UI, which offers the SSH terminal exclusively.
+A localhost-only VNC bridge remains as an unlinked recovery endpoint.
 
 ### Frontend (`frontend/`)
 
@@ -71,7 +66,8 @@ React 18 + TypeScript + Vite + Tailwind, with:
 - Polling hooks for live metrics and task progress, with explicit loading/empty/error
   and disconnected states on every page.
 - A strict black/electric-blue design token system in `tailwind.config.js`.
-- xterm.js renders the browser SSH terminal; "Open SSH" always opens a new tab.
+- The SSHX hand-off page obtains one short-lived hosted URL, then navigates the new tab
+  to `sshx.io`; no terminal emulator or guest password is bundled into the frontend.
 
 ### Data model highlights
 
