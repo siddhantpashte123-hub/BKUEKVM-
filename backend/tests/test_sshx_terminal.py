@@ -101,6 +101,8 @@ def test_domain_xml_uses_sata_sda_not_sr0():
     assert "dev='sda' bus='sata'" in xml
     assert "sr0" not in xml
     assert "dev='vda' bus='virtio'" in xml
+    assert "<serial type='null'>" in xml
+    assert "<console type='pty'>" not in xml
 
 
 def test_start_reactivates_default_network_before_domain(monkeypatch):

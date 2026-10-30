@@ -253,7 +253,9 @@ class LibvirtDriver(HypervisorDriver):
     <graphics type='vnc' port='-1' autoport='yes' listen='127.0.0.1'>
       <listen type='address' address='127.0.0.1'/>
     </graphics>
-    <console type='pty'><target type='serial' port='0'/></console>
+    <!-- No public/local serial console is exposed by the panel. Use a null
+         backend rather than a PTY, which may be unavailable in containers. -->
+    <serial type='null'><target port='0'/></serial>
     <channel type='unix'><target type='virtio' name='org.qemu.guest_agent.0'/></channel>
     <memballoon model='virtio'/>
     <rng model='virtio'><backend model='random'>/dev/urandom</backend></rng>
@@ -379,6 +381,15 @@ class LibvirtDriver(HypervisorDriver):
         try:
             domain.create()
         except Exception as exc:
+            detail = str(exc)
+            if "failed to create pty" in detail.lower() and "permission denied" in detail.lower():
+                raise HypervisorError(
+                    f"Failed to start '{name}': QEMU cannot create the serial PTY in this "
+                    "container. Existing VM configuration was not changed. Back up the "
+                    "inactive domain XML and replace its serial PTY with a null serial "
+                    "backend, or fix host devpts permissions; see docs/troubleshooting.md. "
+                    f"Libvirt error: {detail}"
+                ) from exc
             raise HypervisorError(f"Failed to start '{name}': {exc}") from exc
 
     def power_off(self, name: str) -> None:
