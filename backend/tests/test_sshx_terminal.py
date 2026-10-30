@@ -204,6 +204,26 @@ def test_grant_hypervisor_access_sets_group_perms(tmp_path):
     assert (disk.stat().st_mode & 0o777) == 0o660
 
 
+def test_grant_hypervisor_access_continues_when_chown_denied(tmp_path, monkeypatch):
+    """Inherited named-user ACLs still need writable masks when chgrp fails."""
+    import app.virtualization.libvirt_driver as module
+
+    vm_dir = tmp_path / "vm"
+    vm_dir.mkdir()
+    disk = vm_dir / "disk.qcow2"
+    disk.write_text("disk")
+    disk.chmod(0o600)
+    monkeypatch.setattr(module, "hypervisor_gid", lambda: 12345)
+
+    def denied(*_args):
+        raise PermissionError("not a member of QEMU group")
+
+    monkeypatch.setattr(module.os, "chown", denied)
+    grant_hypervisor_access(vm_dir, disk)
+    assert disk.stat().st_mode & 0o777 == 0o660
+    assert vm_dir.stat().st_mode & 0o7777 == 0o2750
+
+
 def test_kvm_capability_probe_is_honest_without_device():
     from app.virtualization.capabilities import detect_capabilities
 

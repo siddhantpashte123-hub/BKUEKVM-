@@ -138,9 +138,11 @@ def _fail_task(db: Session, task: Task, exc: Exception) -> None:
     append_log(task, f"ERROR: {task.error}")
     if task.vps_id:
         vps = db.get(VPS, task.vps_id)
-        if vps and vps.status == VPSStatus.PROVISIONING:
-            vps.status = VPSStatus.ERROR
-            vps.last_error = task.error
+        if vps:
+            if vps.status == VPSStatus.PROVISIONING:
+                vps.status = VPSStatus.ERROR
+            if task.task_type in ("create_vps", "reinstall_vps", "start_vps", "stop_vps", "shutdown_vps", "restart_vps"):
+                vps.last_error = task.error
             db.commit()
 
 
@@ -275,6 +277,7 @@ def _lifecycle(db: Session, task: Task) -> None:
     elif action == "restart":
         driver.restart(vps.name)
     manager.sync_vps_state(vps, driver)
+    vps.last_error = ""
     db.commit()
     add_step(task, action, "succeeded", f"power_state={vps.power_state}")
     append_log(task, f"{action} completed; state={vps.status.value}")

@@ -276,8 +276,12 @@ XML
     virsh -c qemu:///system net-define /tmp/bluekvm-default-net.xml >/dev/null 2>&1 || true
     rm -f /tmp/bluekvm-default-net.xml
   fi
-  virsh -c qemu:///system net-autostart default >/dev/null 2>&1 || true
-  virsh -c qemu:///system net-start default >/dev/null 2>&1 || true
+  virsh -c qemu:///system net-autostart default >/dev/null 2>&1 || warn "Could not enable default network autostart."
+  if ! LC_ALL=C virsh -c qemu:///system net-info default 2>/dev/null | grep -Eq 'Active:[[:space:]]+yes'; then
+    if ! virsh -c qemu:///system net-start default; then
+      warn "Default NAT network could not start; check dnsmasq and host CAP_NET_ADMIN before creating VPSes."
+    fi
+  fi
 }
 
 # Grant the panel account access to libvirt and /dev/kvm. Distributions name
@@ -368,6 +372,43 @@ install_sshx_client() {
   install -o root -g root -m 755 "$temp/sshx" "$target"
   rm -rf "$temp"
   ok "SSHX client installed"
+}
+
+# In init-less containers libvirt may keep using its distribution QEMU user
+# even after qemu.conf was edited (the running daemon has not reloaded it).
+# Grant only that named user access to panel-managed VM/template trees. Default
+# ACLs make future disks, seed ISOs and downloaded backing images accessible.
+# This is not a substitute for libvirt DAC on normal production hosts.
+prepare_container_qemu_acl() {
+  is_container || return 0
+  local entry uid tree
+  entry="$(getent passwd libvirt-qemu 2>/dev/null || getent passwd qemu 2>/dev/null || true)"
+  [ -n "$entry" ] || { warn "QEMU runtime user not found; verify storage and KVM access manually"; return 0; }
+  uid="$(printf '%s' "$entry" | cut -d: -f3)"
+  command -v setfacl >/dev/null 2>&1 || { warn "setfacl missing; QEMU access could not be configured"; return 0; }
+  setfacl -m "u:$uid:--x" "$DATA_DIR" || { warn "Cannot grant QEMU storage traversal"; return 0; }
+  tree="$DATA_DIR/vms"
+  if [ -d "$tree" ]; then
+    find "$tree" -type d -exec setfacl -m "u:$uid:r-x,d:u:$uid:rwx" {} + || warn "Cannot set QEMU directory ACLs on $tree"
+    find "$tree" -type f -exec setfacl -m "u:$uid:rw-" {} + || warn "Cannot set QEMU file ACLs on $tree"
+  fi
+  tree="$DATA_DIR/templates"
+  if [ -d "$tree" ]; then
+    find "$tree" -type d -exec setfacl -m "u:$uid:r-x,d:u:$uid:r-x" {} + || warn "Cannot set QEMU directory ACLs on $tree"
+    find "$tree" -type f -exec setfacl -m "u:$uid:r--" {} + || warn "Cannot set QEMU file ACLs on $tree"
+  fi
+  if [ -e /dev/kvm ]; then
+    if ! setfacl -m "u:$uid:rw-" /dev/kvm; then
+      warn "Could not grant QEMU access to /dev/kvm; check host device policy."
+    elif command -v setpriv >/dev/null 2>&1; then
+      if ! setpriv --reuid="$uid" --regid="$(printf '%s' "$entry" | cut -d: -f4)" --clear-groups -- \
+        python3 -c 'import os; fd=os.open("/dev/kvm", os.O_RDWR); os.close(fd)' 2>/dev/null; then
+        warn "QEMU user cannot open /dev/kvm; host device policy or permissions may block KVM."
+      fi
+    else
+      warn "setpriv missing; QEMU /dev/kvm access could not be verified."
+    fi
+  fi
 }
 
 # The apt-provided python3-libvirt binding lives in the system dist-packages
