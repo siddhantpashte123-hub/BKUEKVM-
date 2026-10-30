@@ -32,7 +32,7 @@ The installer displays an interactive menu:
 > [versioned release](https://github.com/siddhantpashte123-hub/BKUEKVM-/releases),
 > verify its checksum, then run the verified `install.sh` locally.
 
-After installation open `http://<server-ip>:8080` and sign in with the administrator
+After installation open `http://<server-ip>:8989` and sign in with the administrator
 credentials printed by the installer (no default password is ever shipped). On an
 interactive terminal the installer prompts for the administrator email and password
 (hidden input + confirmation; blank generates a random one); piped/CI installs can
@@ -82,7 +82,7 @@ through *Virtualization Nodes*. It never simulates a successful VM.
 Browser (React + Vite + Tailwind)
    │  cookie auth + CSRF token, SSHX hand-off
    ▼
-FastAPI (Uvicorn :8080)  ── systemd: bluekvm-api
+FastAPI (Uvicorn :8989)  ── systemd: bluekvm-api
    ├── REST routers (/api/...)
    ├── SSHX session launcher + recovery VNC proxy (/ws/console)
    └── service layer (audit, metrics, templates, backups)
@@ -122,7 +122,7 @@ See [docs/architecture.md](docs/architecture.md) for details.
 ## Development
 
 ```bash
-./scripts/run-dev.sh                 # API on :8080, Vite on :5173
+./scripts/run-dev.sh                 # API on :8989, Vite on :5173
 cd backend && pytest                 # 38 backend tests (SQLite + test driver)
 cd frontend && npm run build         # type-check and production build
 ./tests/installer_test.sh            # installer guard-rail tests

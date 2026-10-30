@@ -3,17 +3,20 @@ import os
 from pathlib import Path
 import subprocess
 
+import pytest
+
 
 INSTALLER = Path(__file__).resolve().parents[2] / "installer" / "install.sh"
 
 
-def test_upgrade_loads_but_never_rewrites_existing_configuration(tmp_path):
+@pytest.mark.parametrize("port", ["8080", "8090", "8989"])
+def test_upgrade_loads_but_never_rewrites_existing_configuration(tmp_path, port):
     config = tmp_path / ".env"
     content = ("BLUEKVM_SECRET_KEY=existing_secret\n"
                "BLUEKVM_CREDENTIAL_KEY=existing_fernet_key\n"
                "DATABASE_URL=sqlite:///existing.db\n"
                "BLUEKVM_ADMIN_USERNAME=existing_admin\n"
-               "BLUEKVM_PORT=8090\n")
+               f"BLUEKVM_PORT={port}\n")
     config.write_text(content)
     script = INSTALLER.read_text()
     start = script.index('  if [ "$UPGRADE" -eq 1 ]; then\n', script.index('# ------------------------------------------------------------- secrets/env'))
@@ -30,7 +33,7 @@ def test_upgrade_loads_but_never_rewrites_existing_configuration(tmp_path):
         ["bash", "-c", command], env={**os.environ, "ENV_FILE": str(config)},
         text=True, capture_output=True, check=True,
     )
-    assert result.stdout == "existing_secret|existing_fernet_key|sqlite:///existing.db|existing_admin|8090"
+    assert result.stdout == f"existing_secret|existing_fernet_key|sqlite:///existing.db|existing_admin|{port}"
     assert config.read_text() == content
 
 

@@ -9,9 +9,10 @@ Type=simple
 User=bluekvm
 Group=libvirt
 WorkingDirectory=/opt/bluekvm/backend
+Environment=BLUEKVM_PORT=8989
 EnvironmentFile=/opt/bluekvm/.env
 Environment=BLUEKVM_EMBEDDED_WORKER=0
-ExecStart=/opt/bluekvm/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080 --proxy-headers --forwarded-allow-ips=127.0.0.1
+ExecStart=/opt/bluekvm/backend/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port ${BLUEKVM_PORT} --proxy-headers --forwarded-allow-ips=127.0.0.1
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

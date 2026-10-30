@@ -26,7 +26,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "8989:8989"
     environment:
       DATABASE_URL: postgresql+psycopg://bluekvm:${POSTGRES_PASSWORD:-change-me-strong-password}@db:5432/bluekvm
       BLUEKVM_SECRET_KEY: ${BLUEKVM_SECRET_KEY:?set a 64-char hex secret}

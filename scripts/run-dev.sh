@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local development launcher: backend on :8080, Vite dev server on :5173.
+# Local development launcher: backend on :8989, Vite dev server on :5173.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -13,13 +13,13 @@ export BLUEKVM_TEMPLATE_DIR="$ROOT/backend/data/templates"
 export BLUEKVM_BACKUP_DIR="$ROOT/backend/data/backups"
 export BLUEKVM_LOG_DIR="$ROOT/backend/data/logs"
 
-echo "Starting BLUEKVM PANNEL backend on http://localhost:8080"
+echo "Starting BLUEKVM PANNEL backend on http://localhost:8989"
 (
   cd "$ROOT/backend"
   [ -d .venv ] || python3 -m venv .venv
   . .venv/bin/activate
   pip install -q -r requirements-dev.txt
-  uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
+  uvicorn app.main:app --reload --host 0.0.0.0 --port 8989
 ) &
 API_PID=$!
 

@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 PUBLIC_DEFAULTS = {
     "app_name": "BLUEKVM PANNEL",
     "branding_tagline": "Premium KVM VPS management",
-    "default_port": 8080,
+    "default_port": 8989,
     "release_channel": "stable",
     "audit_retention_days": 90,
     "session_ttl_minutes": 720,
