@@ -92,8 +92,20 @@ sudo systemctl restart bluekvm-worker bluekvm-api
 - **Task stuck in `queued`** — the worker is stopped: `systemctl status bluekvm-worker`.
 - **Task failed mid-provisioning** — open *Background Tasks* for step-level logs.
   The VM is marked `error`; fix the cause and use *Reinstall OS* or delete and recreate.
-- **VM created but won't boot** — open the noVNC console; cloud-init seed failures appear
-  on the serial console. Confirm the template image boots standalone.
+- **VM created but won't boot** — inspect the task's libvirt error and confirm the
+  template image boots standalone. SSHX requires a running guest and a DHCP lease.
+- **`Failed to create PTY: Permission denied`** — new VMs use a null serial backend
+  because the panel does not offer a serial terminal. For an existing stopped VM, the
+  administrator can explicitly back up and modify its persistent libvirt definition:
+  ```bash
+  sudo python3 /opt/bluekvm/scripts/repair-serial-pty.py blue --apply
+  ```
+  Replace `blue` with the exact domain name. The script refuses active domains and
+  unusual serial layouts, backs up the original XML in `/root/bluekvm-domain-backups/`,
+  replaces only the serial PTY/console pair with a null serial backend, and leaves
+  guest disks alone. Then retry **Start**. The guest serial console is unavailable
+  with the null backend. On a host where a serial console is needed, instead restore
+  the backup with `virsh -c qemu:///system define BACKUP_PATH` and fix devpts access.
 
 ## Console
 
