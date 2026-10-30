@@ -14,8 +14,8 @@ class Settings(BaseSettings):
 
     env: str = "production"
     host: str = "0.0.0.0"
-    port: int = 8080
-    public_url: str = "http://localhost:8080"
+    port: int = 8989
+    public_url: str = "http://localhost:8989"
     secret_key: str = "dev-insecure-secret-change-me"
     credential_key: str = ""
 

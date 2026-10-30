@@ -24,7 +24,7 @@ The installer menu offers:
 
 ### What installation does
 
-1. Verifies root, distribution, architecture, RAM/disk, KVM and port 8080.
+1. Verifies root, distribution, architecture, RAM/disk, KVM and port 8989.
 2. Repairs any interrupted package state (`dpkg --configure -a`) automatically.
 3. Installs QEMU/KVM, libvirt, PostgreSQL, nginx, Python, Node.js and image tooling.
 4. Deploys the application under `/opt/bluekvm` and creates a `bluekvm` service account.
@@ -42,7 +42,7 @@ The installer menu offers:
 12. On systemd hosts, installs and starts `bluekvm-api` and `bluekvm-worker`; in
     containers/WSL it writes `/opt/bluekvm/start-panel.sh` and launches the panel
     with the embedded worker instead.
-13. Polls `http://127.0.0.1:8080/health/ready` until healthy and prints the result.
+13. Polls `http://127.0.0.1:8989/health/ready` until healthy and prints the result.
 
 ### Administrator credentials
 
@@ -69,7 +69,7 @@ a random password printed once in the final installation summary.
 
 ## 3. First login
 
-Open `http://<server-ip>:8080`, sign in, then:
+Open `http://<server-ip>:8989`, sign in, then:
 
 1. Download and verify an OS template under **OS Templates**.
 2. Confirm the local node is online under **Virtualization Nodes**, or register an
@@ -78,7 +78,7 @@ Open `http://<server-ip>:8080`, sign in, then:
 
 ## 4. HTTPS (recommended)
 
-The panel listens on plain HTTP on port 8080 by default. Terminate TLS with nginx:
+The panel listens on plain HTTP on port 8989 by default. Terminate TLS with nginx:
 
 ```bash
 sudo cp /opt/bluekvm/deployment/nginx-bluekvm.conf.example /etc/nginx/sites-available/bluekvm
@@ -101,6 +101,6 @@ needs `/dev/kvm`, the libvirt socket and the `libvirt` group — see the comment
 
 ```bash
 sudo bash /opt/bluekvm/installer/status.sh
-curl -s http://127.0.0.1:8080/health/ready | python3 -m json.tool
+curl -s http://127.0.0.1:8989/health/ready | python3 -m json.tool
 journalctl -u bluekvm-api -u bluekvm-worker -f
 ```

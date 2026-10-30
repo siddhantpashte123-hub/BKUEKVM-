@@ -144,7 +144,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </header>
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
         <footer className="border-t border-line px-6 py-4 text-xs text-muted">
-          BLUEKVM PANNEL — self-hosted KVM management · port 8080
+          BLUEKVM PANNEL — self-hosted KVM management
         </footer>
       </div>
     </div>

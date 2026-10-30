@@ -28,9 +28,9 @@ COPY backend/ ./
 COPY --from=frontend /build/frontend/dist /opt/bluekvm/frontend/dist
 
 RUN mkdir -p /var/lib/bluekvm/vms /var/lib/bluekvm/templates /var/lib/bluekvm/backups /var/log/bluekvm
-EXPOSE 8080
+EXPOSE 8989
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD curl -fsS http://127.0.0.1:8080/health/live || exit 1
+    CMD curl -fsS http://127.0.0.1:8989/health/live || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8989"]

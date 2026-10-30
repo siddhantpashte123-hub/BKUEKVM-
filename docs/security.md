@@ -86,7 +86,7 @@ sessions re-check VPS ownership before minting a token.
 
 - [ ] TLS via nginx (see `deployment/nginx-bluekvm.conf.example`) and HSTS.
 - [ ] `BLUEKVM_COOKIE_SECURE=1`, strong random `BLUEKVM_SECRET_KEY` and Fernet key.
-- [ ] Firewall: expose only 80/443 (and 8080 if intentionally direct); block libvirt.
+- [ ] Firewall: expose only 80/443 (and 8989 if intentionally direct); block libvirt.
 - [ ] Run services as the unprivileged `bluekvm` account in the `libvirt` group.
 - [ ] Keep PostgreSQL on localhost with a generated role password.
 - [ ] Pin template SHA-256 checksums before production use.

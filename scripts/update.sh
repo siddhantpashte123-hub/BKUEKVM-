@@ -54,7 +54,7 @@ systemctl restart bluekvm-worker bluekvm-api
 
 echo "[INFO] Waiting for health check"
 for _ in $(seq 1 15); do
-  if curl -fsS "http://127.0.0.1:${BLUEKVM_PORT:-8080}/health/ready" 2>/dev/null | grep -q '"status": "ready"'; then
+  if curl -fsS "http://127.0.0.1:${BLUEKVM_PORT:-8989}/health/ready" 2>/dev/null | grep -qE '"status"[[:space:]]*:[[:space:]]*"ready"'; then
     echo "[ OK ] Update complete and healthy. Backup at $BACKUP_DIR"
     exit 0
   fi

@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // In development the Vite server proxies API and WebSocket traffic to the
-// FastAPI backend on port 8080. In production the backend serves this build.
+// FastAPI backend on port 8989. In production the backend serves this build.
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -10,15 +10,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://127.0.0.1:8080',
+        target: 'http://127.0.0.1:8989',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://127.0.0.1:8080',
+        target: 'ws://127.0.0.1:8989',
         ws: true,
       },
       '/health': {
-        target: 'http://127.0.0.1:8080',
+        target: 'http://127.0.0.1:8989',
       },
     },
   },

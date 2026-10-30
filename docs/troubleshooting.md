@@ -4,7 +4,7 @@
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `Port 8080 is already in use` | Another service occupies the port | `ss -ltnp | grep 8080`, stop it or change `BLUEKVM_PORT` |
+| `Port 8989 is already in use` | Another service occupies the port | `ss -ltnp | grep 8989`, stop it or change `BLUEKVM_PORT` |
 | `KVM: no VMX/SVM extensions exposed` | Nested virtualization disabled | Enable nested virt on the host, or register an external KVM node |
 | `libvirt rejected connection` | Permissions / daemon not running | `systemctl enable --now libvirtd`; ensure the `bluekvm` user is in the `libvirt` group |
 | Health check never ready | Migration or dependency failure | `journalctl -u bluekvm-api -n 200` |
@@ -75,7 +75,7 @@ sudo systemctl restart bluekvm-worker bluekvm-api
 
 ## Database
 
-- Verify connectivity: `curl -s localhost:8080/health/ready`.
+- Verify connectivity: `curl -s localhost:8989/health/ready`.
 - Apply migrations manually:
   ```bash
   cd /opt/bluekvm/backend && . .venv/bin/activate && alembic upgrade head

@@ -22,7 +22,7 @@ DATA_DIR="/var/lib/bluekvm"
 LOG_DIR="/var/log/bluekvm"
 ENV_FILE="$INSTALL_DIR/.env"
 SERVICES=("bluekvm-api" "bluekvm-worker")
-PANEL_PORT=8080
+PANEL_PORT=8989
 
 log()  { printf "%b\n" "${C_GRAY}[$(date +%H:%M:%S)]${C_RESET} ${C_WHITE}$*${C_RESET}"; }
 info() { printf "%b\n" "${C_BLUE}[INFO]${C_RESET}  $*"; }
@@ -493,7 +493,7 @@ prompt_admin_credentials() {
 }
 
 # Identify this installation's standalone uvicorn process, not just any
-# listener on port 8080. /proc may be restricted: failure to inspect is not
+# listener on port 8989. /proc may be restricted: failure to inspect is not
 # proof the service is stopped.
 standalone_panel_pid() {
   local proc_root="${BLUEKVM_PROC_ROOT:-/proc}" proc cwd args
