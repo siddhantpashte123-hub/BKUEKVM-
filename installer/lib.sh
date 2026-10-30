@@ -133,6 +133,53 @@ repair_package_state() {
   fi
 }
 
+# --------------------------------------------------------- Node.js / npm --
+# NodeSource's nodejs package bundles npm and explicitly conflicts with the
+# Debian/Ubuntu npm package. Never request both packages unconditionally.
+ensure_debian_nodejs_npm() {
+  local version major package_version
+  if ! command -v node >/dev/null 2>&1; then
+    info "Installing Node.js"
+    apt-get install -y --no-install-recommends nodejs || {
+      err "Could not install Node.js; check the configured apt repositories."
+      return 1
+    }
+  fi
+
+  if ! command -v node >/dev/null 2>&1; then
+    err "Node.js is not available in PATH after installation."
+    return 1
+  fi
+  version="$(node --version 2>/dev/null || true)"
+  major="${version#v}"
+  major="${major%%.*}"
+  if ! [[ "$major" =~ ^[0-9]+$ ]] || [ "$major" -lt 18 ]; then
+    err "Node.js 18 or newer is required for the frontend; found ${version:-unknown}."
+    err "Install a supported Node.js package, then rerun the installer."
+    return 1
+  fi
+
+  if ! command -v npm >/dev/null 2>&1; then
+    package_version="$(dpkg-query -W -f='${Version}' nodejs 2>/dev/null || true)"
+    if [[ "$package_version" == *nodesource* ]]; then
+      err "The NodeSource nodejs package normally includes npm, but npm is missing from PATH."
+      err "Repair your existing NodeSource installation; the installer will not replace it with distro npm."
+      return 1
+    fi
+    info "Installing the distribution npm package"
+    apt-get install -y --no-install-recommends npm || {
+      err "Could not install npm; check for conflicting Node.js packages or held packages."
+      return 1
+    }
+  fi
+
+  if ! command -v npm >/dev/null 2>&1 || ! npm --version >/dev/null 2>&1; then
+    err "npm is missing or cannot run with the installed Node.js; repair it and rerun."
+    return 1
+  fi
+  ok "Node.js $version and npm $(npm --version) available"
+}
+
 # ------------------------------------------------------------ python pick --
 # New interpreters (3.14+) lack prebuilt wheels for native deps such as
 # pydantic-core, which forces a Rust source build and fails. Restrict the

@@ -83,7 +83,8 @@ do_install() {
       genisoimage cloud-image-utils openssh-client acl util-linux \
       postgresql postgresql-contrib \
       nginx curl ca-certificates git rsync openssl \
-      nodejs npm || die "Package installation failed."
+      || die "Package installation failed."
+    ensure_debian_nodejs_npm || die "Node.js/npm setup failed; see the message above."
   elif [ "$DISTRO_FAMILY" = "rhel" ]; then
     dnf install -y python3 python3-pip qemu-kvm libvirt libvirt-client libvirt-python3 \
       qemu-img genisoimage dnsmasq openssh-clients acl util-linux postgresql-server nginx curl git rsync openssl nodejs npm \
