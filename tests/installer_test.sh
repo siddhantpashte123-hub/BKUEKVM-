@@ -36,9 +36,46 @@ MENU="$(printf '9\n2\n' | bash "$ROOT/installer/install.sh" 2>&1)"
 check "invalid choice rejected" "Invalid selection" "$MENU"
 check "cancel exits cleanly" "Cancelled" "$MENU"
 
+echo "== standalone status without systemd =="
+STATUS_TMP="$(mktemp -d)"
+mkdir -p "$STATUS_TMP/install/backend/.venv/bin" "$STATUS_TMP/proc/1234" "$STATUS_TMP/scripts"
+printf '%s\0' "$STATUS_TMP/install/backend/.venv/bin/python" "$STATUS_TMP/install/backend/.venv/bin/uvicorn" 'app.main:app' > "$STATUS_TMP/proc/1234/cmdline"
+ln -s "$STATUS_TMP/install/backend" "$STATUS_TMP/proc/1234/cwd"
+printf 'DATABASE_URL=sqlite:///%s/data.db\n' "$STATUS_TMP" > "$STATUS_TMP/install/.env"
+touch "$STATUS_TMP/data.db"
+cp "$ROOT/installer/status.sh" "$STATUS_TMP/scripts/status.sh"
+cat > "$STATUS_TMP/scripts/lib.sh" <<STUB
+. "$ROOT/installer/lib.sh"
+INSTALL_DIR="$STATUS_TMP/install"
+ENV_FILE="\$INSTALL_DIR/.env"
+BLUEKVM_PROC_ROOT="$STATUS_TMP/proc"
+has_systemd() { return 1; }
+curl() { return 0; }
+STUB
+STATUS_OUT="$(bash "$STATUS_TMP/scripts/status.sh" 2>&1)"
+check "standalone panel recognized when systemctl exists but systemd is absent" "RUNNING (standalone API pid=1234" "$STATUS_OUT"
+# An unrelated process or port must never be presented as the panel service.
+printf '%s\0' '/usr/bin/python' 'unrelated' > "$STATUS_TMP/proc/1234/cmdline"
+STATUS_OUT="$(bash "$STATUS_TMP/scripts/status.sh" 2>&1)"
+check "unrelated process is not reported as panel" "UNKNOWN (standalone process not detected" "$STATUS_OUT"
+rm -rf "$STATUS_TMP"
+
 echo "== python interpreter selection =="
 # shellcheck source=/dev/null
 . "$ROOT/installer/lib.sh"
+
+# Test systemd unit detection without depending on host PID 1.
+SYSTEMD_OUT="$(bash -c '
+  . "$1"
+  systemctl() {
+    case "$1" in
+      list-unit-files) echo "bluekvm-api.service enabled" ;;
+      is-active) echo active ;;
+    esac
+  }
+  service_state bluekvm-api
+' _ "$ROOT/installer/lib.sh")"
+check "service_state reads unit listing before checking active state" "active" "$SYSTEMD_OUT"
 
 # Fake interpreter directory: "python3" reports 3.14 (unsupported),
 # "python3.12" reports 3.12 (supported). pick_python must avoid 3.14.
