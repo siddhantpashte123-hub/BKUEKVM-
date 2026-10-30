@@ -492,9 +492,28 @@ prompt_admin_credentials() {
   [ -t 0 ] && ok "A random password will be generated and shown once after installation"
 }
 
+# Identify this installation's standalone uvicorn process, not just any
+# listener on port 8080. /proc may be restricted: failure to inspect is not
+# proof the service is stopped.
+standalone_panel_pid() {
+  local proc_root="${BLUEKVM_PROC_ROOT:-/proc}" proc cwd args
+  for proc in "$proc_root"/[0-9]*; do
+    [ -r "$proc/cmdline" ] || continue
+    cwd="$(readlink "$proc/cwd" 2>/dev/null || true)"
+    [ "$cwd" = "$INSTALL_DIR/backend" ] || continue
+    args="$(tr '\000' '\n' < "$proc/cmdline" 2>/dev/null)"
+    if printf '%s\n' "$args" | grep -Fxq "$INSTALL_DIR/backend/.venv/bin/uvicorn" &&
+       printf '%s\n' "$args" | grep -Fxq 'app.main:app'; then
+      printf '%s\n' "${proc##*/}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 service_state() {
   local svc="$1"
-  if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files "$svc.service" >/dev/null 2>&1 | grep -q "$svc"; then
+  if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files "$svc.service" 2>/dev/null | grep -qF "$svc.service"; then
     systemctl is-active "$svc" 2>/dev/null || true
   else
     echo "not_installed"

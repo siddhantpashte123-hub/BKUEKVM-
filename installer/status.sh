@@ -26,19 +26,41 @@ else
   warn "Installation  : NOT INSTALLED"
 fi
 
+# Honor the configured port without executing the environment file.
+if installed; then
+  CONFIGURED_PORT="$(value BLUEKVM_PORT "$ENV_FILE")"
+  if [[ "$CONFIGURED_PORT" =~ ^[0-9]+$ ]] && [ "$CONFIGURED_PORT" -ge 1 ] && [ "$CONFIGURED_PORT" -le 65535 ]; then
+    PANEL_PORT="$CONFIGURED_PORT"
+  fi
+fi
+
 # ------------------------------------------------------------------ services --
-if command -v systemctl >/dev/null 2>&1; then
+# systemctl may exist inside a container even though systemd is not PID 1.
+# In that case the installer uses a standalone uvicorn process with an embedded
+# worker, not systemd units. A port listener alone is not proof it is BLUEKVM.
+if has_systemd; then
   API_STATE="$(service_state bluekvm-api)"
   WORKER_STATE="$(service_state bluekvm-worker)"
-  if [ "$API_STATE" = "active" ]; then
+  if [ "$API_STATE" = "active" ] && [ "$WORKER_STATE" = "active" ]; then
     ok "Service       : RUNNING (api=$API_STATE worker=$WORKER_STATE)"
   elif installed; then
-    err "Service       : STOPPED (api=$API_STATE worker=$WORKER_STATE)"
+    err "Service       : NOT FULLY RUNNING (api=$API_STATE worker=$WORKER_STATE)"
   else
     warn "Service       : NOT CONFIGURED"
   fi
+elif installed; then
+  PANEL_PID="$(standalone_panel_pid || true)"
+  if [ -n "$PANEL_PID" ]; then
+    if curl -fsS -m 4 "http://127.0.0.1:$PANEL_PORT/health/live" >/dev/null 2>&1; then
+      ok "Service       : RUNNING (standalone API pid=$PANEL_PID; worker status not checked)"
+    else
+      warn "Service       : STARTED (standalone API pid=$PANEL_PID; health unavailable)"
+    fi
+  else
+    warn "Service       : UNKNOWN (standalone process not detected; check Web Access below)"
+  fi
 else
-  warn "Service       : systemd unavailable"
+  warn "Service       : NOT CONFIGURED"
 fi
 
 # ---------------------------------------------------------------------- port --
