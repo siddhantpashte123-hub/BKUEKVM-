@@ -103,10 +103,15 @@ def grant_hypervisor_access(vm_dir: Path, *files: Path) -> None:
     try:
         vm_dir.mkdir(parents=True, exist_ok=True)
         if gid is not None:
-            os.chown(vm_dir, -1, gid)
-            for path in files:
+            for path in (vm_dir, *files):
                 if path.exists():
-                    os.chown(path, -1, gid)
+                    try:
+                        os.chown(path, -1, gid)
+                    except PermissionError:
+                        # A non-root panel may not change the QEMU group. Still
+                        # apply the modes below: inherited named-user ACLs need
+                        # their group mask to permit disk writes.
+                        log.debug("Cannot change hypervisor group for %s", path)
         os.chmod(vm_dir, 0o2750)  # setgid: new files inherit the hypervisor group
         for path in files:
             if path.exists():

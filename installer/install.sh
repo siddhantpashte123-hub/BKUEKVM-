@@ -80,13 +80,13 @@ do_install() {
     apt-get install -y --no-install-recommends \
       python3 python3-venv python3-pip python3-libvirt \
       qemu-kvm qemu-utils libvirt-daemon-system libvirt-clients dnsmasq-base \
-      genisoimage cloud-image-utils openssh-client \
+      genisoimage cloud-image-utils openssh-client acl util-linux \
       postgresql postgresql-contrib \
       nginx curl ca-certificates git rsync openssl \
       nodejs npm || die "Package installation failed."
   elif [ "$DISTRO_FAMILY" = "rhel" ]; then
     dnf install -y python3 python3-pip qemu-kvm libvirt libvirt-client libvirt-python3 \
-      qemu-img genisoimage dnsmasq openssh-clients postgresql-server nginx curl git rsync openssl nodejs npm \
+      qemu-img genisoimage dnsmasq openssh-clients acl util-linux postgresql-server nginx curl git rsync openssl nodejs npm \
       || die "Package installation failed."
   else
     warn "Unrecognized distribution ($DISTRO). Installing runtime dependencies anyway."
@@ -270,7 +270,7 @@ EOF
   info "Running health checks"
   HEALTHY=0
   for _ in $(seq 1 15); do
-    if curl -fsS "http://127.0.0.1:$PANEL_PORT/health/ready" 2>/dev/null | grep -q '"status": "ready"'; then
+    if curl -fsS "http://127.0.0.1:$PANEL_PORT/health/ready" 2>/dev/null | grep -qE '"status"[[:space:]]*:[[:space:]]*"ready"'; then
       HEALTHY=1; break
     fi
     sleep 2
@@ -306,6 +306,7 @@ PY
   # back to bluekvm:bluekvm and QEMU cannot boot an existing guest.
   chown -R bluekvm:bluekvm "$DATA_DIR" "$LOG_DIR" "$INSTALL_DIR" 2>/dev/null || true
   prepare_storage_permissions
+  prepare_container_qemu_acl
 
   echo
   printf "%b" "${C_BLUE_BOLD}========================================${C_RESET}\n"
