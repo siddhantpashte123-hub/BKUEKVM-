@@ -397,8 +397,10 @@ prepare_storage_permissions() {
 install_sshx_client() {
   local target="/usr/local/bin/sshx" arch temp
   if [ -x "$target" ]; then
-    "$target" --version >/dev/null 2>&1 && { ok "SSHX client available"; return 0; }
-    err "Existing SSHX executable failed its version check; refusing to overwrite it"
+    if [ -s "$target" ] && runuser -u bluekvm -- "$target" --version 2>/dev/null | grep -qE '^sshx[[:space:]]'; then
+      ok "SSHX client available"; return 0
+    fi
+    err "Existing SSHX executable is empty or failed its version check; refusing to overwrite it. See scripts/repair-sshx.sh."
     return 1
   fi
   [ ! -e "$target" ] || { err "Existing $target is not executable; refusing to overwrite it"; return 1; }
@@ -421,7 +423,7 @@ install_sshx_client() {
   fi
   chmod 755 "$temp" "$temp/sshx"
   # Never execute a freshly downloaded third-party binary as root.
-  if ! runuser -u bluekvm -- "$temp/sshx" --version >/dev/null 2>&1; then
+  if ! runuser -u bluekvm -- "$temp/sshx" --version 2>/dev/null | grep -qE '^sshx[[:space:]]'; then
     rm -rf "$temp"
     err "Downloaded SSHX client failed its version check"
     return 1
