@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   Cpu,
   HardDrive,
@@ -20,6 +20,7 @@ import { Badge, Button, ConfirmDialog, EmptyState, ErrorState, LoadingState, Pag
 import { useAuth } from '../lib/auth'
 
 export default function VpsList() {
+  const navigate = useNavigate()
   const { can } = useAuth()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -178,7 +179,15 @@ export default function VpsList() {
             headers={['VPS', 'Operating System', 'IP Address', 'Resources', 'Node', 'Status', 'Created', 'Actions']}
           >
             {data.items.map((vps) => (
-              <tr key={vps.id}>
+              <tr
+                key={vps.id}
+                className="cursor-pointer transition-colors hover:bg-white/[0.04]"
+                onClick={(event) => {
+                  // Preserve native link behavior (including open in new tab).
+                  if ((event.target as HTMLElement).closest('a, button, input, select, textarea')) return
+                  navigate(`/vps/${vps.public_id}`)
+                }}
+              >
                 <td>
                   <Link to={`/vps/${vps.public_id}`} className="font-semibold text-white hover:text-electric">
                     {vps.name}
@@ -202,7 +211,7 @@ export default function VpsList() {
                   )}
                 </td>
                 <td className="text-xs text-muted">{formatDate(vps.created_at)}</td>
-                <td>
+                <td onClick={(event) => event.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     {can('vps:manage') && (
                       <>
