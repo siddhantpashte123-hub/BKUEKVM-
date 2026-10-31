@@ -192,10 +192,21 @@ do_install() {
         fi
         systemctl enable --now postgresql
       fi
-      su - postgres -c "psql -tc \"SELECT 1 FROM pg_roles WHERE rolname='bluekvm'\"" | grep -q 1 \
-        || su - postgres -c "psql -c \"CREATE ROLE bluekvm LOGIN PASSWORD '$PG_PASSWORD';\""
-      su - postgres -c "psql -tc \"SELECT 1 FROM pg_database WHERE datname='bluekvm'\"" | grep -q 1 \
-        || su - postgres -c "createdb -O bluekvm bluekvm"
+      # On a fresh install, do not silently reuse a pre-existing role/database:
+      # its password is unknown and generating a new one would not update it.
+      ROLE_EXISTS="$(su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='bluekvm'\"")" \
+        || die "Could not inspect PostgreSQL roles."
+      DB_EXISTS="$(su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='bluekvm'\"")" \
+        || die "Could not inspect PostgreSQL databases."
+      if [ "$ROLE_EXISTS" = "1" ] || [ "$DB_EXISTS" = "1" ]; then
+        die "An existing PostgreSQL bluekvm role or database was found without an existing panel configuration. Refusing to overwrite or reuse unknown credentials; back up and resolve the existing installation first."
+      fi
+      # Pass the generated hex password on stdin, not in a process argument.
+      printf "CREATE ROLE bluekvm LOGIN PASSWORD '%s';\n" "$PG_PASSWORD" | \
+        su - postgres -c "psql -v ON_ERROR_STOP=1" \
+        || die "Could not create the PostgreSQL role."
+      su - postgres -c "createdb -O bluekvm bluekvm" \
+        || die "Could not create the PostgreSQL database."
       DATABASE_URL="postgresql+psycopg://bluekvm:${PG_PASSWORD}@127.0.0.1:5432/bluekvm"
       DB_KIND="postgresql"
       ok "PostgreSQL database 'bluekvm' ready"
@@ -232,8 +243,14 @@ EOF
 
   # ------------------------------------------------------------- migrations --
   info "Running database migrations"
-  (cd "$INSTALL_DIR/backend" && . .venv/bin/activate && alembic upgrade head) \
-    || die "Database migration failed."
+  (
+    cd "$INSTALL_DIR/backend" || exit 1
+    # Alembic reads DATABASE_URL from the environment. The installed .env is
+    # one directory above the backend, so it must be loaded explicitly here.
+    set -a; . "$ENV_FILE"; set +a
+    . .venv/bin/activate
+    alembic upgrade head
+  ) || die "Database migration failed. Check the configured database connection and credentials."
   ok "Migrations applied"
 
   # ------------------------------------------------------------- services ----
