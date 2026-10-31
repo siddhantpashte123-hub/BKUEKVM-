@@ -79,7 +79,17 @@ export default function CreateVps() {
 
   const selectedTemplate = templates.find((t) => t.id === form.template_id)
   const readyNodes = nodes.filter((n) => n.status === 'online' && n.kvm_ready)
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), [])
+  // randomUUID is restricted to secure contexts, but getRandomValues is also
+  // available on HTTP in supported browsers. Never fall back to Math.random.
+  const idempotencyKey = useMemo(() => {
+    try {
+      const bytes = new Uint8Array(16)
+      globalThis.crypto.getRandomValues(bytes)
+      return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+    } catch {
+      return null
+    }
+  }, [])
 
   const validateStep = (): string => {
     if (step === 0 && (!form.template_id || selectedTemplate?.status !== 'ready'))
@@ -144,6 +154,7 @@ export default function CreateVps() {
     }
   }
 
+  if (!idempotencyKey) return <ErrorState message="Secure random generation is unavailable. Use a supported browser over HTTPS to create a VPS." />
   if (loadError) return <ErrorState message={loadError} />
 
   if (generatedPw) {
