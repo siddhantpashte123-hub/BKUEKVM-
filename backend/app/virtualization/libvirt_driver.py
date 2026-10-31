@@ -72,16 +72,25 @@ def hypervisor_gid() -> int | None:
 
     candidates: list[str] = []
     qemu_conf = Path("/etc/libvirt/qemu.conf")
-    if qemu_conf.exists():
-        for line in qemu_conf.read_text(encoding="utf-8", errors="ignore").splitlines():
-            line = line.strip()
-            if line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            if key.strip() == "group":
-                name = value.strip().strip('"').strip("'")
-                if name and name not in candidates:
-                    candidates.append(name)
+    try:
+        lines = qemu_conf.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except FileNotFoundError:
+        lines = []
+    except OSError as exc:
+        # qemu.conf is often root-only. The unprivileged worker must not fail
+        # provisioning just because this optional group hint is unreadable.
+        # Libvirt's dynamic DAC remains responsible for custom QEMU identities.
+        log.warning("Cannot read %s for QEMU group discovery: %s; using common group names", qemu_conf, exc)
+        lines = []
+    for line in lines:
+        line = line.strip()
+        if line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.strip() == "group":
+            name = value.strip().strip('"').strip("'")
+            if name and name not in candidates:
+                candidates.append(name)
     candidates.extend(["libvirt-qemu", "kvm", "libvirt"])
     for name in candidates:
         try:
