@@ -87,7 +87,7 @@ if installed && [ -f "$ENV_FILE" ]; then
       ;;
     postgresql*)
       if command -v pg_isready >/dev/null 2>&1 && pg_isready -h 127.0.0.1 -q; then
-        ok "Database      : CONNECTED (postgresql)"
+        ok "Database      : SERVER READY (postgresql; panel credentials not checked)"
       else
         err "Database      : ERROR (postgresql not ready)"
       fi

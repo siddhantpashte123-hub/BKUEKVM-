@@ -1,6 +1,9 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 sqlalchemy==2.0.36
+# PostgreSQL deployments use SQLAlchemy's postgresql+psycopg dialect.
+# Binary wheels avoid requiring local compiler/libpq headers on supported Python.
+psycopg[binary]==3.2.10
 alembic==1.14.0
 pydantic==2.11.9
 pydantic-settings==2.7.1
