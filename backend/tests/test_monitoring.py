@@ -51,6 +51,30 @@ def test_dashboard_summary_counts(admin_client, ready_template, fake_driver):
     assert "tasks" in activity and "audit" in activity
 
 
+def test_dashboard_collector_runs_in_api_when_worker_is_separate(monkeypatch):
+    import time
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.services.metrics import _RING
+
+    monkeypatch.setenv("BLUEKVM_EMBEDDED_WORKER", "0")
+    _RING.clear()
+    with TestClient(app) as client:
+        response = client.post("/api/auth/login", json={
+            "username": "admin", "password": "Sup3rStr0ng!Passw0rd",
+        })
+        assert response.status_code == 200
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            samples = client.get("/api/dashboard/metrics").json()["timeseries"]
+            if len(samples) >= 2:
+                break
+            time.sleep(0.2)
+        assert len(samples) >= 2
+        assert samples[-1]["ts"] > samples[0]["ts"]
+        assert all(0 <= sample["cpu_percent"] <= 100 for sample in samples)
+
+
 def test_metrics_timeseries_endpoint(admin_client):
     from app.services.metrics import record_sample
 

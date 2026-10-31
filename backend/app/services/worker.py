@@ -12,7 +12,6 @@ import time
 
 from ..database import SessionLocal
 from ..models import TaskStatus
-from .metrics import record_sample
 from .provisioner import claim_next_task, run_task
 
 log = logging.getLogger("bluekvm.worker")
@@ -23,7 +22,6 @@ def worker_iteration() -> bool:
     """Process at most one task. Returns True when a task was handled."""
     db = SessionLocal()
     try:
-        record_sample()
         task = claim_next_task(db)
         if not task:
             return False

@@ -36,6 +36,7 @@ from .config import settings
 from .console.ws import router as console_router
 from .database import Base, SessionLocal, engine
 from .logging_config import configure_logging
+from .services.metrics import collect_samples
 from .services.sshx_sessions import sshx_sessions
 from .services.worker import embedded_worker
 
@@ -63,6 +64,7 @@ async def lifespan(app: FastAPI):
 
     stop_event = asyncio.Event()
     worker_task = None
+    metrics_task = asyncio.create_task(collect_samples(stop_event))
     if os.getenv("BLUEKVM_EMBEDDED_WORKER", "1") == "1":
         worker_task = asyncio.create_task(embedded_worker(stop_event))
     log.info("BLUEKVM PANNEL %s started on %s:%s (env=%s)", __version__, settings.host, settings.port, settings.env)
@@ -73,6 +75,7 @@ async def lifespan(app: FastAPI):
     stop_event.set()
     if worker_task:
         worker_task.cancel()
+    await metrics_task
 
 
 app = FastAPI(
