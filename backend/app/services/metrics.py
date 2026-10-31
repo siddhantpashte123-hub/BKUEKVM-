@@ -5,8 +5,12 @@ instead of inventing numbers. Host metrics are distinct from per-VM stats.
 """
 from __future__ import annotations
 
+import asyncio
+import logging
 import shutil
 import time
+
+log = logging.getLogger("bluekvm.metrics")
 
 import psutil
 
@@ -63,10 +67,23 @@ def _ring_buffer() -> list[dict]:
 def record_sample() -> dict:
     sample = {
         "ts": time.time(),
-        "cpu_percent": psutil.cpu_percent(interval=None),
+        "cpu_percent": psutil.cpu_percent(interval=0.1),
         "mem_percent": psutil.virtual_memory().percent,
     }
     _RING.append(sample)
     if len(_RING) > 300:  # keep five minutes at 1s cadence
         _RING.pop(0)
     return sample
+
+
+async def collect_samples(stop_event: asyncio.Event, interval: float = 1.0) -> None:
+    """Keep real host samples in the API process that serves the dashboard."""
+    while not stop_event.is_set():
+        try:
+            await asyncio.to_thread(record_sample)
+        except Exception:  # keep the collector alive after a transient psutil error
+            log.exception("Host metrics sample failed")
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except asyncio.TimeoutError:
+            pass
