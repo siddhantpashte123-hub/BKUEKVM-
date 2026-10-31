@@ -7,12 +7,32 @@
 | `Port 8989 is already in use` | Another service occupies the port | `ss -ltnp | grep 8989`, stop it or change `BLUEKVM_PORT` |
 | `KVM: no VMX/SVM extensions exposed` | Nested virtualization disabled | Enable nested virt on the host, or register an external KVM node |
 | `libvirt rejected connection` | Permissions / daemon not running | `systemctl enable --now libvirtd`; ensure the `bluekvm` user is in the `libvirt` group |
+| API `Exec format error` for `.venv/bin/uvicorn`, or `cannot import name create_engine` | Python environment may be incomplete or corrupted | On a systemd host, follow the explicit venv repair procedure below; do not delete the database or overwrite `.env`. |
 | Health check never ready | Migration or dependency failure | `journalctl -u bluekvm-api -n 200` |
 | `dpkg was interrupted` | A previous apt run was killed mid-operation | The installer now repairs this automatically; manually: `sudo dpkg --configure -a && sudo apt-get -f install -y` |
 | `error: the configured Python interpreter version (3.14) is newer than PyO3's maximum` | Default `python3` is 3.14, which has no prebuilt wheels for native deps | The installer auto-selects `python3.12`/`python3.11`. If absent: `sudo apt install python3.12 python3.12-venv`, delete the partial venv (`rm -rf /opt/bluekvm/backend/.venv`) and re-run |
 | `fatal: detected dubious ownership in repository` | `/opt/bluekvm` is owned by a different UID (common in containers) | The installer now whitelists the path via `git config --global --add safe.directory /opt/bluekvm` automatically |
 | `"systemd" is not running in this container` | Container image without systemd | The installer detects this and writes `/opt/bluekvm/start-panel.sh` (runs uvicorn with the embedded worker); use it under tmux/supervisord/compose |
 | Create VPS wizard: `No KVM-capable online node is registered` | libvirtd is stopped, the venv cannot `import libvirt`, or the panel user lacks libvirt group access | See the dedicated section below |
+
+## Repair a damaged Python environment (systemd host)
+
+First inspect `journalctl -u bluekvm-api -u bluekvm-worker -n 80 --no-pager`.
+If the installed venv is damaged, a root administrator can explicitly run:
+
+```bash
+sudo bash /opt/bluekvm/scripts/repair-venv.sh --apply
+```
+
+The script stops the panel API and worker (not guest VMs), preserves the old
+venv under `/opt/bluekvm/backend/.venv-backup.*`, installs dependencies in a
+fresh venv, checks imports and executables as the `bluekvm` user, and restarts
+services. It does not reset the database or rewrite `.env`. If installation or
+readiness fails, it reports the backup path; inspect logs rather than deleting
+anything. A service restart can itself perform normal application database
+writes. This does not fix invalid database credentials, missing migrations,
+libvirt device restrictions or a full disk. Package downloads require network
+access. Back up panel configuration and databases separately before maintenance.
 
 ## "No KVM-capable online node is registered"
 

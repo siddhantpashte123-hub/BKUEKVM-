@@ -228,6 +228,16 @@ ensure_python() {
   PYTHON_BIN="$picked"
 }
 
+# Check the executable and core imports before reusing an existing venv. An
+# interrupted install can leave package metadata present but files truncated;
+# pip then reports "already satisfied" while the services fail at runtime.
+venv_core_usable() {
+  local venv="$1"
+  [ -x "$venv/bin/python" ] && [ -x "$venv/bin/uvicorn" ] || return 1
+  "$venv/bin/python" -c 'import sys; from sqlalchemy import create_engine; import fastapi, uvicorn; raise SystemExit(0 if (3, 10) <= sys.version_info[:2] <= (3, 13) else 1)' >/dev/null 2>&1 || return 1
+  "$venv/bin/uvicorn" --version >/dev/null 2>&1
+}
+
 # ------------------------------------------------------- runtime detection --
 has_systemd() {
   [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1

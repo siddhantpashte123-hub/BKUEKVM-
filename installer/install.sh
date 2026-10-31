@@ -147,15 +147,27 @@ do_install() {
 
   ensure_python
   ok "Using Python interpreter: $PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
-  info "Creating Python virtual environment"
-  # --system-site-packages is required so the distro python3-libvirt binding
-  # (installed via apt, no PyPI wheel) is importable inside the venv.
-  "$PYTHON_BIN" -m venv --system-site-packages "$INSTALL_DIR/backend/.venv"
-  "$INSTALL_DIR/backend/.venv/bin/pip" install --upgrade pip >/dev/null
-  "$INSTALL_DIR/backend/.venv/bin/pip" install -r "$INSTALL_DIR/backend/requirements.txt" \
+  VENV="$INSTALL_DIR/backend/.venv"
+  if [ -e "$VENV" ]; then
+    # Do not install over a broken environment: pip can incorrectly report
+    # damaged packages as already installed. Preserve it for explicit repair.
+    venv_core_usable "$VENV" || die "Existing Python venv is damaged or incomplete. It was not replaced. Back it up and use scripts/repair-venv.sh --apply on a systemd host, or repair it manually."
+    info "Reusing existing verified Python virtual environment"
+  else
+    info "Creating Python virtual environment"
+    # System site packages expose the distro python3-libvirt binding.
+    "$PYTHON_BIN" -m venv --system-site-packages "$VENV" \
+      || die "Python virtual environment creation failed."
+  fi
+  "$VENV/bin/python" -m pip install --upgrade pip >/dev/null \
+    || die "Could not upgrade pip in the Python virtual environment."
+  "$VENV/bin/python" -m pip install -r "$INSTALL_DIR/backend/requirements.txt" \
     || die "Python dependency installation failed."
-  verify_libvirt_binding "$INSTALL_DIR/backend/.venv/bin/python"
-  ok "Backend dependencies installed"
+  venv_core_usable "$VENV" || die "Installed Python environment failed its import/executable check; it was preserved for inspection."
+  "$VENV/bin/python" -c 'import psycopg' >/dev/null 2>&1 \
+    || die "PostgreSQL driver import failed; the Python environment was preserved for inspection."
+  verify_libvirt_binding "$VENV/bin/python"
+  ok "Backend dependencies installed and verified"
 
   info "Building frontend"
   (cd "$INSTALL_DIR/frontend" && npm install --no-audit --no-fund && npm run build) \
