@@ -15,6 +15,18 @@
 | `"systemd" is not running in this container` | Container image without systemd | The installer detects this and writes `/opt/bluekvm/start-panel.sh` (runs uvicorn with the embedded worker); use it under tmux/supervisord/compose |
 | Create VPS wizard: `No KVM-capable online node is registered` | libvirtd is stopped, the venv cannot `import libvirt`, or the panel user lacks libvirt group access | See the dedicated section below |
 
+## PostgreSQL SQL_ASCII database
+
+If psycopg returns bytes and Alembic fails in the server-version check with
+`cannot use a string pattern on a bytes-like object`, check the database's
+server and client encodings. BLUEKVM's psycopg connections request UTF-8 for
+both the app and Alembic; new BLUEKVM databases are created as UTF-8. This
+changes neither an existing database's encoding nor the cluster. SQL_ASCII
+accepts arbitrary bytes, so existing non-UTF-8 data may still fail to decode:
+back up and inspect it before migrations or writing. Do not drop or recreate
+an existing database without an explicit recovery plan. On shared hosts, assess
+other services and port conflicts before running a full installer upgrade.
+
 ## Repair a damaged Python environment (systemd host)
 
 First inspect `journalctl -u bluekvm-api -u bluekvm-worker -n 80 --no-pager`.

@@ -217,7 +217,9 @@ do_install() {
       printf "CREATE ROLE bluekvm LOGIN PASSWORD '%s';\n" "$PG_PASSWORD" | \
         su - postgres -c "psql -v ON_ERROR_STOP=1" \
         || die "Could not create the PostgreSQL role."
-      su - postgres -c "createdb -O bluekvm bluekvm" \
+      # Only the new BLUEKVM database is created as UTF-8. template0 permits
+      # this even if the host's existing cluster defaults to SQL_ASCII.
+      su - postgres -c "createdb --encoding=UTF8 --template=template0 --lc-collate=C --lc-ctype=C -O bluekvm bluekvm" \
         || die "Could not create the PostgreSQL database."
       DATABASE_URL="postgresql+psycopg://bluekvm:${PG_PASSWORD}@127.0.0.1:5432/bluekvm"
       DB_KIND="postgresql"
