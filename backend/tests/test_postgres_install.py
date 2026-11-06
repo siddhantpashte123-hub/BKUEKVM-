@@ -10,6 +10,27 @@ ROOT = Path(__file__).resolve().parents[2]
 INSTALLER = (ROOT / "installer/install.sh").read_text()
 
 
+@pytest.mark.parametrize("url, expected", [
+    ("postgresql+psycopg://user:pw@localhost/db", {"client_encoding": "UTF8"}),
+    ("postgresql+psycopg://user:pw@localhost/db?client_encoding=LATIN1", {}),
+    ("postgresql+psycopg2://user:pw@localhost/db", {}),
+    ("sqlite:////tmp/example.db", {"check_same_thread": False}),
+])
+def test_connection_args_are_scoped_to_the_driver(url, expected):
+    from app.database import database_connect_args
+    assert database_connect_args(url) == expected
+
+
+def test_alembic_uses_the_same_connection_args():
+    env = (ROOT / 'backend/alembic/env.py').read_text()
+    assert 'connect_args=database_connect_args(settings.database_url)' in env
+
+
+def test_new_postgres_database_uses_utf8_without_altering_the_cluster():
+    assert 'createdb --encoding=UTF8 --template=template0 --lc-collate=C --lc-ctype=C -O bluekvm bluekvm' in INSTALLER
+    assert 'ALTER DATABASE' not in INSTALLER
+
+
 def test_postgres_psycopg_dialect_is_installable_without_opening_connection():
     # Constructing the engine imports the configured DBAPI. No database server
     # is required and we do not claim that authentication succeeds here.
