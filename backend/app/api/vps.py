@@ -13,6 +13,7 @@ from ..deps import (
     can_access_vps,
     client_ip,
     require_permission,
+    require_any_permission,
     scoped_vps_query,
 )
 from ..models import (
@@ -244,7 +245,7 @@ def lifecycle(
     payload: LifecycleRequest,
     request: Request,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("vps:manage")),
+    user=Depends(require_any_permission("vps:manage", "vps:power")),
 ):
     action_map = {
         "start": "start_vps", "stop": "stop_vps",
@@ -319,7 +320,7 @@ def create_console_session(
     public_id: str,
     request: Request,
     db: Session = Depends(get_db),
-    user=Depends(require_permission("vps:read")),
+    user=Depends(require_permission("vps:manage")),
 ):
     vps = _get_visible(request, db, user, public_id)
     if not can_access_vps(request, user, vps):

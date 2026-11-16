@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..deps import get_current_user, scoped_vps_query
+from ..deps import require_permission, scoped_vps_query
 from ..models import AuditLog, Node, Task, VPS, VPSStatus
 from ..services.metrics import cpu_timeseries, host_metrics
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
 
 @router.get("/summary")
-def summary(request: Request, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def summary(request: Request, db: Session = Depends(get_db), user=Depends(require_permission("monitoring:read"))):
     base = scoped_vps_query(request, db, user)
     rows = (
         base.with_entities(VPS.status, func.count(VPS.id))
@@ -37,7 +37,7 @@ def summary(request: Request, db: Session = Depends(get_db), user=Depends(get_cu
 
 
 @router.get("/metrics")
-def metrics(db: Session = Depends(get_db), user=Depends(get_current_user)):
+def metrics(db: Session = Depends(get_db), user=Depends(require_permission("monitoring:read"))):
     host = host_metrics()
     host["timeseries"] = cpu_timeseries(60)
     return host
@@ -47,7 +47,7 @@ def metrics(db: Session = Depends(get_db), user=Depends(get_current_user)):
 def activity(
     request: Request,
     db: Session = Depends(get_db),
-    user=Depends(get_current_user),
+    user=Depends(require_permission("audit:read")),
     limit: int = 10,
 ):
     limit = min(max(limit, 1), 50)

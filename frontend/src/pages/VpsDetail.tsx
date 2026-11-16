@@ -137,7 +137,7 @@ export default function VpsDetail() {
             >
               <SquareTerminal className="h-4 w-4" /> Open SSHX
             </Button>
-            {can('vps:manage') && (
+            {(can('vps:manage') || can('vps:power')) && (
               <>
                 <Button variant="secondary" disabled={busy} onClick={() => act('start')}>
                   <Play className="h-4 w-4" /> Start
@@ -148,9 +148,11 @@ export default function VpsDetail() {
                 <Button variant="secondary" disabled={busy} onClick={() => act('restart')}>
                   <RotateCcw className="h-4 w-4" /> Restart
                 </Button>
-                <Button variant="danger" disabled={busy} onClick={() => setConfirmDelete(true)}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {can('vps:manage') && (
+                  <Button variant="danger" disabled={busy} onClick={() => setConfirmDelete(true)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
               </>
             )}
           </div>
