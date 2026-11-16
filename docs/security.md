@@ -20,13 +20,14 @@ is enforced server-side in `app/deps.py` and disabled only in local development.
 
 ## Authorization
 
-Four seeded roles (`app/bootstrap.py`):
+Five seeded roles (`app/bootstrap.py`):
 
 | Role | Scope |
 |---|---|
 | Super Administrator | Wildcard — all permissions |
 | Administrator | Full management, users and settings |
-| VPS Manager | VPS lifecycle, templates (read), backups, monitoring |
+| VPS Manager | All VPS lifecycle operations, templates (read), backups, monitoring |
+| Customer | Assigned VPS only: read, power actions and SSHX; no create, delete, reinstall or global infrastructure access |
 | Read-Only Viewer | Read access, no audit log access, no mutations |
 
 Every API route declares a required permission through `require_permission(...)`.
@@ -34,6 +35,14 @@ Scoped users only see VPS rows whose `owner_id` matches their account, and conso
 sessions re-check VPS ownership before minting a token.
 
 ## Virtualization isolation
+
+The Customer role limits panel API access; it does **not** isolate guest network
+traffic. The default libvirt NAT can allow guests to reach each other or the host.
+Do not onboard untrusted customers on a shared network until per-tenant networking,
+host firewall rules, hypervisor isolation and guest access have been independently
+configured and verified. Hosted SSHX links are bearer URLs and remain usable until
+expiry even if disclosed. Customer ownership is selected when creating a VPS; the
+panel currently has no existing-VPS ownership transfer workflow.
 
 - The web process never executes shell commands with user input. All hypervisor
   operations go through the `HypervisorDriver` service layer; libvirt APIs and

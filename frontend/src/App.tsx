@@ -32,6 +32,11 @@ function Protected({ children }: { children: ReactNode }) {
   return <Layout>{children}</Layout>
 }
 
+function DashboardHome() {
+  const { can } = useAuth()
+  return can('monitoring:read') ? <Dashboard /> : <Navigate to="/vps" replace />
+}
+
 export default function App() {
   return (
     <Routes>
@@ -40,7 +45,7 @@ export default function App() {
         path="/"
         element={
           <Protected>
-            <Dashboard />
+            <DashboardHome />
           </Protected>
         }
       />

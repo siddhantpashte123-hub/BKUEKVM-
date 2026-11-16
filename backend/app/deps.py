@@ -19,7 +19,7 @@ SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 # Permission catalogue used by the seeded roles
 PERMISSIONS = {
-    "vps:read", "vps:manage",
+    "vps:read", "vps:manage", "vps:power",
     "node:read", "node:manage",
     "template:read", "template:manage",
     "network:read", "network:manage",
@@ -93,6 +93,19 @@ def require_permission(permission: str):
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"Missing permission: {permission}")
         return user
 
+    return dependency
+
+
+def require_any_permission(*permissions: str):
+    def dependency(
+        request: Request,
+        user: User = Depends(get_current_user),
+        _csrf: None = Depends(enforce_csrf),
+    ) -> User:
+        granted = getattr(request.state, "permissions", []) or []
+        if "*" not in granted and not any(p in granted for p in permissions):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Missing required permission")
+        return user
     return dependency
 
 

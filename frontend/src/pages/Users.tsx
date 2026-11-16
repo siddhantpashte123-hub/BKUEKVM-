@@ -80,7 +80,7 @@ export default function Users() {
     <div>
       <PageHeader
         title="Users & Permissions"
-        description="Role-based access control with four seeded roles"
+        description="Role-based access control for administrators and customers"
         actions={
           <Button onClick={() => setShowCreate(true)}>
             <Plus className="h-4 w-4" /> New user

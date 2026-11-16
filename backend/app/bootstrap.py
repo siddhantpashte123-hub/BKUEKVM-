@@ -39,6 +39,7 @@ ROLE_DEFINITIONS = [
             "monitoring:read",
         ],
     ),
+    ("Customer", ["vps:read", "vps:power"]),
     (
         "Read-Only Viewer",
         [

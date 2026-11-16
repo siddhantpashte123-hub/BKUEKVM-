@@ -162,14 +162,14 @@ export default function VpsList() {
       {!loading && !error && data && data.items.length === 0 && (
         <EmptyState
           title="No VPS instances found"
-          hint="Adjust filters or create your first virtual machine. A KVM-capable online node is required."
-          action={
+          hint={can('vps:manage') ? 'Adjust filters or create your first virtual machine. A KVM-capable online node is required.' : 'No VPS is assigned to your account yet.'}
+          action={can('vps:manage') ? (
             <Link to="/vps/create">
               <Button>
                 <Plus className="h-4 w-4" /> Create VPS
               </Button>
             </Link>
-          }
+          ) : undefined}
         />
       )}
 
@@ -213,7 +213,7 @@ export default function VpsList() {
                 <td className="text-xs text-muted">{formatDate(vps.created_at)}</td>
                 <td onClick={(event) => event.stopPropagation()}>
                   <div className="flex items-center gap-1">
-                    {can('vps:manage') && (
+                    {(can('vps:manage') || can('vps:power')) && (
                       <>
                         <IconBtn title="Start" disabled={busy || vps.status === 'running'} onClick={() => action(vps, 'start')}>
                           <Play className="h-4 w-4" />

@@ -50,9 +50,16 @@ function Brand() {
 }
 
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
+  const { can } = useAuth()
+  const required: Record<string, string> = {
+    '/': 'monitoring:read', '/vps': 'vps:read', '/vps/create': 'vps:manage',
+    '/nodes': 'node:read', '/templates': 'template:read', '/network': 'network:read',
+    '/storage': 'storage:read', '/backups': 'backup:read', '/users': 'user:read',
+    '/logs': 'audit:read', '/monitoring': 'monitoring:read', '/settings': 'settings:read',
+  }
   return (
     <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
-      {NAV.map(({ to, label, icon: Icon, end }) => (
+      {NAV.filter(({ to }) => can(required[to])).map(({ to, label, icon: Icon, end }) => (
         <NavLink
           key={to}
           to={to}

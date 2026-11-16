@@ -45,9 +45,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string) => {
     const result = await api.post<{ user: User }>('/api/auth/login', { username, password })
-    setUser(result.user)
     const perms = await api.get<{ permissions: string[] }>('/api/auth/permissions')
     setPermissions(perms.permissions)
+    setUser(result.user)
   }
 
   const logout = async () => {
