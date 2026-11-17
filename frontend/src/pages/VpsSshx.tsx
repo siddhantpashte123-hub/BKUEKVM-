@@ -44,19 +44,19 @@ export default function VpsSshx() {
 
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-2xl flex-col items-center justify-center px-4 text-center">
-      <SquareTerminal className="mb-5 h-11 w-11 text-secondary" />
+      <SquareTerminal className="mb-5 h-11 w-11 text-electric" />
       <h1 className="text-2xl font-bold text-white">Opening SSHX terminal…</h1>
       {opening && !error && (
-        <p className="mt-3 max-w-lg text-sm text-secondary">
+        <p className="mt-3 max-w-lg text-sm text-muted">
           BLUEKVM is verifying your VPS access and creating a short-lived, encrypted sshx.io terminal session.
         </p>
       )}
 
       {error && (
-        <div className="mt-5 w-full rounded-lg border border-color bg-card p-5 text-left">
-          <p className="font-semibold text-white">SSHX session unavailable</p>
-          <p className="mt-2 text-sm text-secondary">{error}</p>
-          <p className="mt-3 text-xs text-secondary">
+        <div className="mt-5 w-full rounded-xl border border-danger/50 bg-danger/10 p-5 text-left">
+          <p className="font-semibold text-danger">SSHX session unavailable</p>
+          <p className="mt-2 text-sm text-muted">{error}</p>
+          <p className="mt-3 text-xs text-muted">
             The VPS must be running with a discovered guest IP and SSH service. SSHX must also be installed on the
             panel node by the current BLUEKVM installer.
           </p>
@@ -64,12 +64,9 @@ export default function VpsSshx() {
       )}
 
       {fallbackUrl && (
-        <p className="mt-5 text-sm text-secondary">
+        <p className="mt-5 text-sm text-muted">
           Navigation was blocked.{' '}
-          <a
-            href={fallbackUrl}
-            className="inline-flex items-center gap-1 text-secondary hover:text-white hover:underline"
-          >
+          <a href={fallbackUrl} className="inline-flex items-center gap-1 text-electric hover:underline">
             Continue to SSHX <ExternalLink className="h-3.5 w-3.5" />
           </a>
         </p>
@@ -88,8 +85,8 @@ export default function VpsSshx() {
         </Link>
       </div>
 
-      <div className="mt-8 flex max-w-xl items-start gap-2 rounded-lg border border-color bg-card px-4 py-3 text-left text-xs text-secondary">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+      <div className="mt-8 flex max-w-xl items-start gap-2 rounded-lg border border-line bg-panel px-4 py-3 text-left text-xs text-muted">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-electric" />
         <p>
           This hosted SSHX URL is a bearer link. BLUEKVM gives it only to the authorized VPS user, never stores it,
           and terminates the relay automatically after 15 minutes. Do not share the link.

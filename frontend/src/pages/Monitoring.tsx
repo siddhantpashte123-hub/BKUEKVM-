@@ -27,38 +27,34 @@ export default function Monitoring() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard icon={<Cpu className="h-5 w-5" />} label="CPU usage" value={m ? `${m.cpu.percent.toFixed(1)}%` : '—'} sub={`${m?.cpu.cores_logical ?? 0} logical cores`} />
         <StatCard icon={<MemoryStick className="h-5 w-5" />} label="Memory" value={m ? `${m.memory.percent.toFixed(1)}%` : '—'} sub={m ? `${formatBytes(m.memory.used_bytes)} / ${formatBytes(m.memory.total_bytes)}` : ''} />
-        <StatCard icon={<HardDrive className="h-5 w-5" />} label="Disk" value={m ? `${m.disk.percent}%` : '—'} sub={m ? formatBytes(m.disk.free_bytes) + ' free' : ''} />
-        <StatCard icon={<Activity className="h-5 w-5" />} label="Active VMs" value={m?.active_vps ?? '—'} sub={`${m?.queued_tasks ?? 0} queued jobs`} />
+        <StatCard icon={<HardDrive className="h-5 w-5" />} label="Disk" value={m ? `${m.disk.percent}%` : '—'} sub={m ? formatBytes(m.disk.free_bytes) + ' free' : ''} tone="text-warning" />
+        <StatCard icon={<Activity className="h-5 w-5" />} label="Active VMs" value={m?.active_vps ?? '—'} sub={`${m?.queued_tasks ?? 0} queued jobs`} tone="text-success" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
-          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
-            <Cpu className="h-4 w-4 shrink-0" /> CPU & memory pressure
-          </h3>
+          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white"><Cpu className="h-4 w-4 text-electric" /> CPU & memory pressure</h3>
           <div className="space-y-5">
             <div>
-              <div className="mb-2 flex justify-between text-sm text-secondary"><span>CPU</span><span>{m?.cpu.percent.toFixed(1)}%</span></div>
+              <div className="mb-2 flex justify-between text-sm text-muted"><span>CPU</span><span>{m?.cpu.percent.toFixed(1)}%</span></div>
               <ProgressBar percent={m?.cpu.percent ?? 0} />
-              <p className="mt-1 text-xs text-secondary">
+              <p className="mt-1 text-xs text-muted">
                 Load average: {m ? `${m.cpu.load_average['1m']} / ${m.cpu.load_average['5m']} / ${m.cpu.load_average['15m']}` : '—'}
               </p>
             </div>
             <div>
-              <div className="mb-2 flex justify-between text-sm text-secondary"><span>RAM</span><span>{m?.memory.percent.toFixed(1)}%</span></div>
-              <ProgressBar percent={m?.memory.percent ?? 0} />
+              <div className="mb-2 flex justify-between text-sm text-muted"><span>RAM</span><span>{m?.memory.percent.toFixed(1)}%</span></div>
+              <ProgressBar percent={m?.memory.percent ?? 0} tone="bg-primary" />
             </div>
             <div>
-              <div className="mb-2 flex justify-between text-sm text-secondary"><span>Root filesystem</span><span>{m?.disk.percent}%</span></div>
-              <ProgressBar percent={m?.disk.percent ?? 0} />
+              <div className="mb-2 flex justify-between text-sm text-muted"><span>Root filesystem</span><span>{m?.disk.percent}%</span></div>
+              <ProgressBar percent={m?.disk.percent ?? 0} tone="bg-warning" />
             </div>
           </div>
         </Card>
 
         <Card>
-          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
-            <Wifi className="h-4 w-4 shrink-0" /> Network traffic
-          </h3>
+          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white"><Wifi className="h-4 w-4 text-electric" /> Network traffic</h3>
           {m ? (
             <div className="space-y-3 text-sm">
               <Row label="Total received" value={formatBytes(m.network.bytes_recv)} />
@@ -68,32 +64,30 @@ export default function Monitoring() {
               <Row label="Boot time" value={m.boot_time ? new Date(m.boot_time * 1000).toLocaleString() : '—'} />
             </div>
           ) : (
-            <p className="text-sm text-secondary">Unavailable</p>
+            <p className="text-sm text-muted">Unavailable</p>
           )}
         </Card>
       </div>
 
       <Card>
         <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
-          <Database className="h-4 w-4 shrink-0" /> Service health
+          <Database className="h-4 w-4 text-electric" /> Service health
         </h3>
         {health.error ? (
-          <p className="text-sm text-secondary">{health.error}</p>
+          <p className="text-sm text-danger">{health.error}</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {(health.data?.services ?? []).map((s) => (
-              <div key={s.name} className="rounded-lg border border-color bg-card p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-white">{s.name}</p>
-                    {s.detail ? (
-                      <p className="mt-0.5 break-all text-xs text-secondary">
-                        {typeof s.detail === 'string' ? s.detail : JSON.stringify(s.detail)}
-                      </p>
-                    ) : null}
-                  </div>
-                  <Badge value={s.status === 'connected' || s.status === 'ready' || s.status === 'running' ? 'active' : 'unconfigured'} />
+              <div key={s.name} className="flex items-center justify-between rounded-lg border border-line bg-input p-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">{s.name}</p>
+                  {s.detail ? (
+                    <p className="mt-0.5 break-all text-xs text-muted">
+                      {typeof s.detail === 'string' ? s.detail : JSON.stringify(s.detail)}
+                    </p>
+                  ) : null}
                 </div>
+                <Badge value={s.status === 'connected' || s.status === 'ready' || s.status === 'running' ? 'active' : 'unconfigured'} />
               </div>
             ))}
           </div>
@@ -101,12 +95,10 @@ export default function Monitoring() {
       </Card>
 
       <Card>
-        <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
-          <MonitorCog className="h-4 w-4 shrink-0" /> Node virtualization readiness
-        </h3>
+        <h3 className="mb-4 flex items-center gap-2 font-semibold text-white"><MonitorCog className="h-4 w-4 text-electric" /> Node virtualization readiness</h3>
         <div className="space-y-3">
           {(health.data?.nodes ?? []).map((n) => (
-            <div key={n.id} className="rounded-lg border border-color bg-card p-4">
+            <div key={n.id} className="rounded-lg border border-line bg-input p-4">
               <div className="flex items-center justify-between">
                 <p className="font-semibold text-white">{n.name}</p>
                 <div className="flex gap-2">
@@ -114,10 +106,10 @@ export default function Monitoring() {
                   <Badge value={n.kvm_ready ? 'online' : 'offline'} />
                 </div>
               </div>
-              {n.last_error && <p className="mt-2 text-xs text-secondary">{n.last_error}</p>}
+              {n.last_error && <p className="mt-2 text-xs text-danger">{n.last_error}</p>}
             </div>
           ))}
-          {(!health.data || health.data.nodes.length === 0) && <p className="text-sm text-secondary">No nodes registered</p>}
+          {(!health.data || health.data.nodes.length === 0) && <p className="text-sm text-muted">No nodes registered</p>}
         </div>
       </Card>
     </div>
@@ -126,8 +118,8 @@ export default function Monitoring() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border-b border-color pb-2 flex items-center justify-between">
-      <span className="text-secondary">{label}</span>
+    <div className="flex items-center justify-between border-b border-line/60 pb-2">
+      <span className="text-muted">{label}</span>
       <span className="font-medium text-white">{value}</span>
     </div>
   )

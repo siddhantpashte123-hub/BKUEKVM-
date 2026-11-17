@@ -59,29 +59,27 @@ export default function Templates() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="text-lg font-bold capitalize text-white">{t.os_family} {t.version}</h3>
-                    <p className="mt-0.5 text-sm text-secondary">{t.name}</p>
+                    <p className="mt-0.5 text-sm text-muted">{t.name}</p>
                   </div>
                   <Badge value={t.status} />
                 </div>
                 <dl className="mt-4 space-y-2 text-sm">
-                  <div className="flex items-center gap-2 text-secondary">
-                    <HardDrive className="h-4 w-4 shrink-0" />
+                  <div className="flex items-center gap-2 text-muted">
+                    <HardDrive className="h-4 w-4 text-electric" />
                     Architecture: <span className="text-white">{t.arch}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-secondary">
-                    <ShieldCheck className="h-4 w-4 shrink-0" />
+                  <div className="flex items-center gap-2 text-muted">
+                    <ShieldCheck className="h-4 w-4 text-electric" />
                     Checksum: <span className="font-mono text-xs text-white">{t.checksum_sha256 ? `${t.checksum_sha256.slice(0, 18)}…` : 'not pinned'}</span>
                   </div>
-                  <p className="text-secondary">
-                    Image size: <span className="text-white">{t.size_bytes ? formatBytes(t.size_bytes) : 'unknown'}</span>
-                  </p>
+                  <p className="text-muted">Image size: <span className="text-white">{t.size_bytes ? formatBytes(t.size_bytes) : 'unknown'}</span></p>
                 </dl>
               </div>
 
               <div className="mt-4">
                 {t.status === 'ready' ? (
-                  <p className="flex items-center gap-2 text-sm font-medium text-secondary">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" /> Ready for provisioning
+                  <p className="flex items-center gap-2 text-sm font-medium text-success">
+                    <CheckCircle2 className="h-4 w-4" /> Ready for provisioning
                   </p>
                 ) : (
                   can('template:manage') && (
@@ -96,7 +94,7 @@ export default function Templates() {
                   )
                 )}
                 {t.status === 'verification_failed' && (
-                  <p className="mt-2 text-xs text-secondary">Checksum verification failed — the image was rejected and cannot provision VMs.</p>
+                  <p className="mt-2 text-xs text-danger">Checksum verification failed — the image was rejected and cannot provision VMs.</p>
                 )}
               </div>
             </Card>

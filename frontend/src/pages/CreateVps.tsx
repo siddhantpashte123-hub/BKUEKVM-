@@ -163,20 +163,23 @@ export default function CreateVps() {
         <PageHeader title="VPS provisioning started" description="Save the generated credential now — it is shown only once." />
         <Card>
           <div className="flex items-center gap-2 text-white">
-            <KeyRound className="h-5 w-5 shrink-0" />
+            <KeyRound className="h-5 w-5 text-electric" />
             <h2 className="font-semibold">Generated VM password</h2>
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-color bg-card p-4">
-            <code className="break-all font-mono text-base text-white">{generatedPw}</code>
-            <Button variant="secondary" onClick={() => navigator.clipboard?.writeText(generatedPw)}>
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-warning/40 bg-warning/10 p-4">
+            <code className="break-all font-mono text-base text-warning">{generatedPw}</code>
+            <Button
+              variant="secondary"
+              onClick={() => navigator.clipboard?.writeText(generatedPw)}
+            >
               <Copy className="h-4 w-4" /> Copy
             </Button>
           </div>
-          <dl className="mt-4 grid gap-2 text-sm text-secondary">
+          <dl className="mt-4 grid gap-2 text-sm text-muted">
             <div>Login user: <span className="text-white">ubuntu</span></div>
             <div>Use: browser SSH terminal on the VPS page, or any SSH client once the guest has an IP.</div>
           </dl>
-          <p className="mt-4 text-xs text-secondary">
+          <p className="mt-4 text-xs text-muted">
             The password is stored encrypted on the panel and used server-side by the SSH terminal. It cannot be
             retrieved from the API later.
           </p>
@@ -199,35 +202,33 @@ export default function CreateVps() {
         {STEPS.map((label, i) => (
           <div key={label} className="flex items-center">
             <div
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border text-xs font-bold transition ${
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold transition ${
                 i < step
-                  ? 'border-color bg-card text-white'
+                  ? 'border-success bg-success/15 text-success'
                   : i === step
-                    ? 'border-color bg-card text-white'
-                    : 'border border-color bg-main text-muted'
+                    ? 'border-electric bg-electric/15 text-electric shadow-glow'
+                    : 'border-line bg-input text-muted'
               }`}
             >
               {i < step ? <Check className="h-4 w-4" /> : i + 1}
             </div>
-            <span className={`ml-2 mr-3 hidden whitespace-nowrap text-xs font-semibold sm:block ${i === step ? 'text-white' : 'text-secondary'}`}>
+            <span className={`ml-2 mr-3 hidden whitespace-nowrap text-xs font-semibold sm:block ${i === step ? 'text-white' : 'text-muted'}`}>
               {label}
             </span>
-            {i < STEPS.length - 1 && <div className="h-px w-6 bg-border sm:w-10" />}
+            {i < STEPS.length - 1 && <div className="h-px w-6 bg-line sm:w-10" />}
           </div>
         ))}
       </div>
 
       <Card>
         {submitError && (
-          <div className="mb-5 rounded-lg border border-color bg-card p-3 text-xs text-secondary">{submitError}</div>
+          <div className="mb-5 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">{submitError}</div>
         )}
 
         {step === 0 && (
           <div className="space-y-3">
-            <h3 className="flex items-center gap-2 font-semibold text-white">
-              <HardDrive className="h-4 w-4 shrink-0" /> Choose an operating system
-            </h3>
-            {templates.length === 0 && <p className="text-sm text-secondary">Loading templates…</p>}
+            <h3 className="flex items-center gap-2 font-semibold text-white"><HardDrive className="h-4 w-4 text-electric" /> Choose an operating system</h3>
+            {templates.length === 0 && <p className="text-sm text-muted">Loading templates…</p>}
             <div className="grid gap-3 sm:grid-cols-2">
               {templates.map((t) => (
                 <button
@@ -235,17 +236,17 @@ export default function CreateVps() {
                   type="button"
                   disabled={t.status !== 'ready'}
                   onClick={() => set('template_id', t.id)}
-                  className={`rounded-lg border border-color p-4 text-left transition disabled:opacity-50 disabled:cursor-not-allowed ${
-                    form.template_id === t.id ? 'bg-card' : 'bg-main hover:border-color'
+                  className={`rounded-lg border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                    form.template_id === t.id ? 'border-electric bg-electric/10 shadow-glow' : 'border-line bg-input hover:border-electric/50'
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <p className="font-semibold capitalize text-white">{t.os_family} {t.version}</p>
                     <Badge value={t.status} />
                   </div>
-                  <p className="mt-1 text-xs text-secondary">{t.name} · {t.arch}</p>
+                  <p className="mt-1 text-xs text-muted">{t.name} · {t.arch}</p>
                   {t.status !== 'ready' && (
-                    <p className="mt-2 text-xs text-secondary">Download from OS Templates before use</p>
+                    <p className="mt-2 text-xs text-warning">Download from OS Templates before use</p>
                   )}
                 </button>
               ))}
@@ -260,7 +261,7 @@ export default function CreateVps() {
             <Textarea label="Description (optional)" className="sm:col-span-2" value={form.description} onChange={(e) => set('description', e.target.value)} />
             {can('user:read') && (
               <Select label="Owner" value={String(form.owner_id)} onChange={(e) => set('owner_id', e.target.value ? Number(e.target.value) : '')}>
-                <option value="">Me (administrator)</option>
+                <option value="">Me ({'administrator'})</option>
                 {users.map((u) => (
                   <option key={u.id} value={u.id}>{u.username}</option>
                 ))}
@@ -272,25 +273,23 @@ export default function CreateVps() {
 
         {step === 2 && (
           <div className="space-y-5">
-            <h3 className="flex items-center gap-2 font-semibold text-white">
-              <Cpu className="h-4 w-4 shrink-0" /> Resource allocation
-            </h3>
+            <h3 className="flex items-center gap-2 font-semibold text-white"><Cpu className="h-4 w-4 text-electric" /> Resource allocation</h3>
             <div className="grid gap-4 sm:grid-cols-3">
-              <div className="flex flex-col gap-1">
-                <label className="label flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5 shrink-0" /> vCPUs</label>
-                <input type="number" min={1} max={64} className="input" value={form.vcpus} onChange={(e) => set('vcpus', Number(e.target.value))} />
+              <div>
+                <label className="label-base flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5" /> vCPUs</label>
+                <input type="number" min={1} max={64} className="input-base" value={form.vcpus} onChange={(e) => set('vcpus', Number(e.target.value))} />
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="label flex items-center gap-1.5"><MemoryStick className="h-3.5 w-3.5 shrink-0" /> RAM (MB)</label>
-                <input type="number" min={256} step={256} className="input" value={form.ram_mb} onChange={(e) => set('ram_mb', Number(e.target.value))} />
-                <p className="mt-1 text-xs text-secondary">{formatMb(form.ram_mb)}</p>
+              <div>
+                <label className="label-base flex items-center gap-1.5"><MemoryStick className="h-3.5 w-3.5" /> RAM (MB)</label>
+                <input type="number" min={256} step={256} className="input-base" value={form.ram_mb} onChange={(e) => set('ram_mb', Number(e.target.value))} />
+                <p className="mt-1 text-xs text-muted">{formatMb(form.ram_mb)}</p>
               </div>
-              <div className="flex flex-col gap-1">
-                <label className="label flex items-center gap-1.5"><HardDrive className="h-3.5 w-3.5 shrink-0" /> Disk (GB)</label>
-                <input type="number" min={5} className="input" value={form.disk_gb} onChange={(e) => set('disk_gb', Number(e.target.value))} />
+              <div>
+                <label className="label-base flex items-center gap-1.5"><HardDrive className="h-3.5 w-3.5" /> Disk (GB)</label>
+                <input type="number" min={5} className="input-base" value={form.disk_gb} onChange={(e) => set('disk_gb', Number(e.target.value))} />
               </div>
             </div>
-            <div className="rounded-lg border border-color bg-card p-4 text-secondary">
+            <div className="rounded-lg border border-line bg-input p-4 text-sm text-muted">
               <p className="font-semibold text-white">Capacity check</p>
               <p className="mt-1">
                 {readyNodes.length} KVM-ready online node{readyNodes.length === 1 ? '' : 's'} available. The API rejects
@@ -302,15 +301,11 @@ export default function CreateVps() {
 
         {step === 3 && (
           <div className="space-y-4">
-            <h3 className="flex items-center gap-2 font-semibold text-white">
-              <Globe className="h-4 w-4 shrink-0" /> Networking
-            </h3>
+            <h3 className="flex items-center gap-2 font-semibold text-white"><Globe className="h-4 w-4 text-electric" /> Networking</h3>
             <Select label="Virtual network" value={String(form.network_id)} onChange={(e) => set('network_id', e.target.value ? Number(e.target.value) : '')}>
               <option value="">No panel-managed network</option>
               {networks.map((n) => (
-                <option key={n.id} value={n.id}>
-                  {n.name} ({n.network_type} · {n.bridge}) {n.dhcp_enabled ? '· DHCP' : ''}
-                </option>
+                <option key={n.id} value={n.id}>{n.name} ({n.network_type} · {n.bridge}) {n.dhcp_enabled ? '· DHCP' : ''}</option>
               ))}
             </Select>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -342,7 +337,7 @@ export default function CreateVps() {
                 onChange={(e) => set('confirm_password', e.target.value)}
               />
             </div>
-            <p className="text-xs text-secondary">
+            <p className="text-xs text-muted">
               Leave both blank and the panel generates a strong password, shown once after creation. The credential is
               stored encrypted and never sent back to the browser again.
             </p>
@@ -351,38 +346,33 @@ export default function CreateVps() {
 
         {step === 4 && (
           <div className="space-y-4">
-            <h3 className="flex items-center gap-2 font-semibold text-white">
-              <MonitorCog className="h-4 w-4 shrink-0" /> Node selection
-            </h3>
-            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-color bg-card p-4">
-              <input type="radio" name="node" checked={form.node_id === ''} onChange={() => set('node_id', '')} className="mt-1 shrink-0" />
+            <h3 className="flex items-center gap-2 font-semibold text-white"><MonitorCog className="h-4 w-4 text-electric" /> Node selection</h3>
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-input p-4 hover:border-electric/50">
+              <input type="radio" name="node" checked={form.node_id === ''} onChange={() => set('node_id', '')} className="mt-1 accent-[#008CFF]" />
               <div>
                 <p className="font-semibold text-white">Automatic placement</p>
-                <p className="text-xs text-secondary">Choose a healthy node with enough free CPU, RAM and disk</p>
+                <p className="text-xs text-muted">Choose a healthy node with enough free CPU, RAM and disk</p>
               </div>
             </label>
             {nodes.map((n) => (
-              <label
-                key={n.id}
-                className={`flex cursor-pointer items-start gap-3 rounded-lg border p-4 ${n.status === 'online' && n.kvm_ready ? 'border-color bg-card hover:border-color' : 'border-color bg-card/50 opacity-60 pointer-events-none disabled:opacity-50'}`}
-              >
+              <label key={n.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border p-4 ${n.status === 'online' && n.kvm_ready ? 'border-line bg-input hover:border-electric/50' : 'border-line bg-panel opacity-60'}`}>
                 <input
                   type="radio"
                   name="node"
                   disabled={n.status !== 'online' || !n.kvm_ready}
                   checked={form.node_id === n.id}
                   onChange={() => set('node_id', n.id)}
-                  className="mt-1 shrink-0"
+                  className="mt-1 accent-[#008CFF]"
                 />
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <p className="font-semibold text-white">{n.name} {n.is_local && <span className="text-xs text-secondary">(local)</span>}</p>
+                    <p className="font-semibold text-white">{n.name} {n.is_local && <span className="text-xs text-muted">(local)</span>}</p>
                     <Badge value={n.status} />
                   </div>
-                  <p className="mt-1 text-xs text-secondary">
+                  <p className="mt-1 text-xs text-muted">
                     {n.cpu_cores} cores · {formatMb(n.ram_mb)} · KVM {n.kvm_ready ? 'ready' : 'unavailable'}
                   </p>
-                  {n.last_error && <p className="mt-1 text-xs text-secondary">{n.last_error}</p>}
+                  {n.last_error && <p className="mt-1 text-xs text-danger">{n.last_error}</p>}
                 </div>
               </label>
             ))}
@@ -391,9 +381,7 @@ export default function CreateVps() {
 
         {step === 5 && (
           <div className="space-y-4">
-            <h3 className="flex items-center gap-2 font-semibold text-white">
-              <Server className="h-4 w-4 shrink-0" /> Review and create
-            </h3>
+            <h3 className="flex items-center gap-2 font-semibold text-white"><Server className="h-4 w-4 text-electric" /> Review and create</h3>
             <dl className="grid gap-3 sm:grid-cols-2">
               <ReviewItem label="Operating system" value={selectedTemplate?.name ?? '—'} />
               <ReviewItem label="VPS name" value={form.name} />
@@ -408,7 +396,7 @@ export default function CreateVps() {
                 value={form.cloud_init_password ? 'Set (encrypted at rest)' : 'Random — shown once after create'}
               />
             </dl>
-            <div className="rounded-lg border border-color bg-card p-4 text-secondary">
+            <div className="rounded-lg border border-warning/40 bg-warning/10 p-4 text-sm text-warning">
               Provisioning runs as a background job: disk creation, cloud-init, startup and verification. You can watch
               live progress on the VPS detail page.
             </div>
@@ -436,8 +424,8 @@ export default function CreateVps() {
 
 function ReviewItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-color bg-card p-3">
-      <dt className="text-xs uppercase tracking-wider text-secondary">{label}</dt>
+    <div className="rounded-lg border border-line bg-input p-3">
+      <dt className="text-xs uppercase tracking-wider text-muted">{label}</dt>
       <dd className="mt-1 break-words text-sm font-medium text-white">{value}</dd>
     </div>
   )

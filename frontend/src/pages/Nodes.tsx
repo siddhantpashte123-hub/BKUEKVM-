@@ -107,7 +107,7 @@ export default function Nodes() {
       {caps && (
         <Card className="mb-5">
           <h3 className="mb-3 flex items-center gap-2 font-semibold text-white">
-            <MonitorCog className="h-4 w-4 shrink-0" /> Local host virtualization capabilities
+            <MonitorCog className="h-4 w-4 text-electric" /> Local host virtualization capabilities
           </h3>
           <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
             <Cap label="KVM" ok={caps.kvm_available} detail={caps.kvm_reason} />
@@ -116,7 +116,7 @@ export default function Nodes() {
             <Cap label="QEMU" ok={caps.qemu_installed} detail={caps.qemu_installed ? 'qemu-system installed' : 'not installed'} />
           </div>
           {!caps.kvm_available && (
-            <p className="mt-4 rounded-lg border border-color bg-card p-3 text-xs text-secondary">
+            <p className="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-xs text-warning">
               This host cannot run KVM virtual machines. On a VPS without nested virtualization, register a separate
               KVM-capable node — the panel will never simulate a successful VM.
             </p>
@@ -129,12 +129,12 @@ export default function Nodes() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           {nodes.map((node) => (
-            <Card key={node.id}>
+            <Card key={node.id} className="transition hover:border-electric/40">
               <div className="flex items-start justify-between">
                 <div>
                   <h3 className="flex items-center gap-2 text-lg font-bold text-white">
-                    <Server className="h-4 w-4 shrink-0" /> {node.name}
-                    {node.is_local && <span className="rounded-lg border border-color px-1.5 py-0.5 text-[10px] uppercase text-muted">local</span>}
+                    <Server className="h-4 w-4 text-electric" /> {node.name}
+                    {node.is_local && <span className="rounded border border-line px-1.5 py-0.5 text-[10px] uppercase text-muted">local</span>}
                   </h3>
                   <p className="mt-1 font-mono text-xs text-muted">{node.libvirt_uri}</p>
                 </div>
@@ -142,16 +142,16 @@ export default function Nodes() {
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <p className="flex items-center gap-2 text-secondary"><Cpu className="h-4 w-4 shrink-0" /> {node.cpu_cores || '—'} cores</p>
-                <p className="flex items-center gap-2 text-secondary"><MemoryStick className="h-4 w-4 shrink-0" /> {node.ram_mb ? formatMb(node.ram_mb) : '—'}</p>
-                <p className="text-secondary">Hypervisor: <span className="text-white">{node.hypervisor_version || 'unknown'}</span></p>
-                <p className="text-secondary">VMs hosted: <span className="text-white">{node.vm_count}</span></p>
-                <p className="text-secondary">KVM: <span className="text-secondary">{node.kvm_ready ? 'ready' : 'unavailable'}</span></p>
-                <p className="text-secondary">Checked: <span className="text-white">{relativeTime(node.last_health_at)}</span></p>
+                <p className="flex items-center gap-2 text-muted"><Cpu className="h-4 w-4 text-electric" /> {node.cpu_cores || '—'} cores</p>
+                <p className="flex items-center gap-2 text-muted"><MemoryStick className="h-4 w-4 text-electric" /> {node.ram_mb ? formatMb(node.ram_mb) : '—'}</p>
+                <p className="text-muted">Hypervisor: <span className="text-white">{node.hypervisor_version || 'unknown'}</span></p>
+                <p className="text-muted">VMs hosted: <span className="text-white">{node.vm_count}</span></p>
+                <p className="text-muted">KVM: <span className={node.kvm_ready ? 'text-success' : 'text-danger'}>{node.kvm_ready ? 'ready' : 'unavailable'}</span></p>
+                <p className="text-muted">Checked: <span className="text-white">{relativeTime(node.last_health_at)}</span></p>
               </div>
 
               {node.last_error && (
-                <p className="mt-3 rounded-lg border border-color bg-card p-2.5 text-xs text-secondary">{node.last_error}</p>
+                <p className="mt-3 rounded-lg border border-danger/30 bg-danger/10 p-2.5 text-xs text-danger">{node.last_error}</p>
               )}
 
               <div className="mt-4 flex gap-2">
@@ -179,11 +179,11 @@ export default function Nodes() {
           <Input label="Address" placeholder="10.0.0.12 or node1.example.com" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
           <Input label="libvirt URI" placeholder="qemu+tls://10.0.0.12/system" value={form.libvirt_uri} onChange={(e) => setForm({ ...form, libvirt_uri: e.target.value })} />
           <Input label="Connection secret (stored encrypted)" type="password" value={form.credential} onChange={(e) => setForm({ ...form, credential: e.target.value })} />
-          <label className="flex items-center gap-2 text-sm text-secondary">
-            <input type="checkbox" checked={form.is_local} onChange={(e) => setForm({ ...form, is_local: e.target.checked })} />
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" className="accent-[#008CFF]" checked={form.is_local} onChange={(e) => setForm({ ...form, is_local: e.target.checked })} />
             This is the local panel host
           </label>
-          <p className="text-xs text-secondary">
+          <p className="text-xs text-muted">
             Never expose a libvirt TCP socket to the public internet. Use TLS with restricted credentials or an SSH tunnel.
           </p>
           <Button className="w-full" loading={busy} onClick={register}>Register and verify</Button>
@@ -193,11 +193,12 @@ export default function Nodes() {
       <ConfirmDialog
         open={!!toRemove}
         title="Remove node"
+        danger
         confirmLabel="Remove"
         loading={busy}
         onClose={() => setToRemove(null)}
         onConfirm={remove}
-        message={<>Disconnect <strong>{toRemove?.name}</strong>? Hosted VMs must be migrated first — the API enforces this.</>}
+        message={<>Disconnect <strong className="text-electric">{toRemove?.name}</strong>? Hosted VMs must be migrated first — the API enforces this.</>}
       />
     </div>
   )
@@ -205,12 +206,12 @@ export default function Nodes() {
 
 function Cap({ label, ok, detail }: { label: string; ok: boolean; detail: string }) {
   return (
-    <div className="rounded-lg border border-color bg-card p-3">
+    <div className="rounded-lg border border-line bg-input p-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs uppercase tracking-wider text-secondary">{label}</span>
-        <span className={`h-2.5 w-2.5 rounded-full border ${ok ? 'text-secondary' : 'text-muted'}`} />
+        <span className="text-xs uppercase tracking-wider text-muted">{label}</span>
+        <span className={`h-2.5 w-2.5 rounded-full ${ok ? 'bg-success' : 'bg-danger'}`} />
       </div>
-      <p className="mt-1.5 text-xs text-secondary">{detail}</p>
+      <p className="mt-1.5 text-xs text-white">{detail}</p>
     </div>
   )
 }

@@ -52,9 +52,7 @@ export default function VpsDetail() {
       const [v, t, b] = await Promise.all([
         api.get<VPS>(`/api/vps/${id}`),
         api.get<Task[]>(`/api/vps/${id}/tasks`),
-        can('backup:read')
-          ? api.get<Backup[]>(`/api/backups`, { vps_id: '' as unknown as number }).catch(() => [])
-          : Promise.resolve([]),
+        can('backup:read') ? api.get<Backup[]>(`/api/backups`, { vps_id: '' as unknown as number }).catch(() => []) : Promise.resolve([]),
       ])
       setVps(v)
       setTasks(t)
@@ -151,7 +149,7 @@ export default function VpsDetail() {
                   <RotateCcw className="h-4 w-4" /> Restart
                 </Button>
                 {can('vps:manage') && (
-                  <Button variant="secondary" disabled={busy} onClick={() => setConfirmDelete(true)}>
+                  <Button variant="danger" disabled={busy} onClick={() => setConfirmDelete(true)}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 )}
@@ -163,20 +161,20 @@ export default function VpsDetail() {
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <Badge value={vps.status} />
-        <span className="text-sm text-secondary">Power: <span className="text-white">{vps.power_state}</span></span>
-        <span className="text-sm text-secondary">Created {relativeTime(vps.created_at)}</span>
+        <span className="text-sm text-muted">Power: <span className="text-white">{vps.power_state}</span></span>
+        <span className="text-sm text-muted">Created {relativeTime(vps.created_at)}</span>
       </div>
 
-      {notice && <div className="mb-4 rounded-lg border border-color bg-card px-4 py-2.5 text-sm text-secondary">{notice}</div>}
-      {error && <div className="mb-4 rounded-lg border border-color bg-card px-4 py-2.5 text-sm text-secondary">{error}</div>}
+      {notice && <div className="mb-4 rounded-lg border border-electric/40 bg-electric/10 px-4 py-2.5 text-sm text-white">{notice}</div>}
+      {error && <div className="mb-4 rounded-lg border border-danger/40 bg-danger/10 px-4 py-2.5 text-sm text-danger">{error}</div>}
 
-      <div className="mb-5 flex gap-1 overflow-x-auto rounded-lg border border-color bg-card p-1">
+      <div className="mb-5 flex gap-1 overflow-x-auto rounded-lg border border-line bg-panel p-1">
         {TABS.map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`whitespace-nowrap rounded-md border-transparent px-4 py-2 text-sm font-medium transition-colors duration-150 ${
-              tab === t ? 'bg-card text-white' : 'text-muted hover:text-white hover:bg-card'
+            className={`whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition ${
+              tab === t ? 'bg-primary/20 text-electric shadow-[inset_0_0_0_1px_rgba(0,140,255,0.4)]' : 'text-muted hover:text-white'
             }`}
           >
             {t}
@@ -188,13 +186,9 @@ export default function VpsDetail() {
         <div className="space-y-5">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Card>
-              <h3 className="mb-3 flex items-center gap-2 font-semibold text-white">
-                <Cpu className="h-4 w-4 shrink-0" /> Compute
-              </h3>
-              <p className="text-sm text-secondary">
-                Allocated: <span className="text-white">{vps.vcpus} vCPU · {formatMb(vps.ram_mb)}</span>
-              </p>
-              <p className="mt-2 text-sm text-secondary">
+              <h3 className="mb-3 flex items-center gap-2 font-semibold text-white"><Cpu className="h-4 w-4 text-electric" /> Compute</h3>
+              <p className="text-sm text-muted">Allocated: <span className="text-white">{vps.vcpus} vCPU · {formatMb(vps.ram_mb)}</span></p>
+              <p className="mt-2 text-sm text-muted">
                 Live CPU:{' '}
                 <span className="text-white">
                   {stats?.available && stats.cpu_percent !== undefined ? `${stats.cpu_percent}%` : 'unavailable'}
@@ -205,15 +199,11 @@ export default function VpsDetail() {
               )}
             </Card>
             <Card>
-              <h3 className="mb-3 flex items-center gap-2 font-semibold text-white">
-                <MemoryStick className="h-4 w-4 shrink-0" /> Memory
-              </h3>
-              <p className="text-sm text-secondary">
+              <h3 className="mb-3 flex items-center gap-2 font-semibold text-white"><MemoryStick className="h-4 w-4 text-electric" /> Memory</h3>
+              <p className="text-sm text-muted">
                 Guest usage:{' '}
                 <span className="text-white">
-                  {stats?.available && stats.ram_used_mb
-                    ? `${formatMb(stats.ram_used_mb)} / ${formatMb(stats.ram_total_mb || vps.ram_mb)}`
-                    : 'unavailable'}
+                  {stats?.available && stats.ram_used_mb ? `${formatMb(stats.ram_used_mb)} / ${formatMb(stats.ram_total_mb || vps.ram_mb)}` : 'unavailable'}
                 </span>
               </p>
               {stats?.available && stats.ram_used_mb ? (
@@ -221,47 +211,39 @@ export default function VpsDetail() {
                   <ProgressBar percent={(stats.ram_used_mb / (stats.ram_total_mb || vps.ram_mb)) * 100} />
                 </div>
               ) : (
-                <p className="mt-2 text-xs text-secondary">
-                  Reported by the hypervisor once the guest agent/balloon is active
-                </p>
+                <p className="mt-2 text-xs text-muted">Reported by the hypervisor once the guest agent/balloon is active</p>
               )}
             </Card>
             <Card>
-              <h3 className="mb-3 flex items-center gap-2 font-semibold text-white">
-                <HardDrive className="h-4 w-4 shrink-0" /> Disk
-              </h3>
-              <p className="text-sm text-secondary">
-                Allocated capacity: <span className="text-white">{vps.disk_gb} GB</span>
-              </p>
-              <p className="mt-2 text-sm text-secondary">
+              <h3 className="mb-3 flex items-center gap-2 font-semibold text-white"><HardDrive className="h-4 w-4 text-electric" /> Disk</h3>
+              <p className="text-sm text-muted">Allocated capacity: <span className="text-white">{vps.disk_gb} GB</span></p>
+              <p className="mt-2 text-sm text-muted">
                 Written: <span className="text-white">{stats?.disk_used_bytes ? formatBytes(stats.disk_used_bytes) : 'unavailable'}</span>
               </p>
             </Card>
           </div>
 
           {vps.last_error && (
-            <Card>
-              <h3 className="mb-2 font-semibold text-white">Last error</h3>
-              <p className="text-sm text-secondary">{vps.last_error}</p>
+            <Card className="border-danger/40">
+              <h3 className="mb-2 font-semibold text-danger">Last error</h3>
+              <p className="text-sm text-white">{vps.last_error}</p>
             </Card>
           )}
 
           <Card>
-            <h3 className="mb-3 flex items-center gap-2 font-semibold text-white">
-              <Activity className="h-4 w-4 shrink-0" /> Recent tasks
-            </h3>
+            <h3 className="mb-3 flex items-center gap-2 font-semibold text-white"><Activity className="h-4 w-4 text-electric" /> Recent tasks</h3>
             {tasks.length === 0 ? (
-              <p className="text-sm text-secondary">No tasks recorded</p>
+              <p className="text-sm text-muted">No tasks recorded</p>
             ) : (
               <div className="space-y-3">
                 {tasks.slice(0, 5).map((t) => (
-                  <div key={t.id} className="rounded-lg border border-color bg-card p-3">
+                  <div key={t.id} className="rounded-lg border border-line bg-input p-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium text-white">{titleCase(t.task_type.replace(/_/g, ' '))}</span>
                       <Badge value={t.status} />
                     </div>
                     <div className="mt-2"><ProgressBar percent={t.progress} /></div>
-                    {t.error && <p className="mt-2 text-xs text-secondary">{t.error}</p>}
+                    {t.error && <p className="mt-2 text-xs text-danger">{t.error}</p>}
                   </div>
                 ))}
               </div>
@@ -273,7 +255,7 @@ export default function VpsDetail() {
       {tab === 'SSH' && (
         <Card>
           <h3 className="mb-2 font-semibold text-white">SSHX terminal</h3>
-          <p className="mb-4 text-sm text-secondary">
+          <p className="mb-4 text-sm text-muted">
             Opens a hosted sshx.io terminal in a new browser tab. BLUEKVM verifies VPS access, keeps the provisioned
             credential on the panel, and ends the SSHX relay automatically after 15 minutes. The URL is a bearer link:
             it is issued once to you and is never saved by the panel, so do not share it.
@@ -285,18 +267,14 @@ export default function VpsDetail() {
             <SquareTerminal className="h-4 w-4" /> Open SSHX in new tab
           </Button>
           {vps.status !== 'running' && (
-            <p className="mt-3 text-xs text-secondary">
-              Start the VPS and wait for a DHCP lease before connecting.
-            </p>
+            <p className="mt-3 text-xs text-muted">Start the VPS and wait for a DHCP lease before connecting.</p>
           )}
         </Card>
       )}
 
       {tab === 'Network' && (
         <Card>
-          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
-            <Network className="h-4 w-4 shrink-0" /> Network information
-          </h3>
+          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white"><Network className="h-4 w-4 text-electric" /> Network information</h3>
           <dl className="grid gap-3 sm:grid-cols-2">
             <Info label="IP address" value={vps.ip_address || 'DHCP / unassigned'} mono />
             <Info label="MAC address" value={vps.mac_address || 'Auto-generated'} mono />
@@ -305,8 +283,8 @@ export default function VpsDetail() {
           </dl>
           {stats?.network_rx_bytes !== undefined && (
             <div className="mt-4 grid gap-3 sm:grid-cols-2 text-sm">
-              <p className="text-secondary">RX: <span className="text-white">{formatBytes(stats.network_rx_bytes)}</span></p>
-              <p className="text-secondary">TX: <span className="text-white">{formatBytes(stats.network_tx_bytes)}</span></p>
+              <p className="text-muted">RX: <span className="text-white">{formatBytes(stats.network_rx_bytes)}</span></p>
+              <p className="text-muted">TX: <span className="text-white">{formatBytes(stats.network_tx_bytes)}</span></p>
             </div>
           )}
         </Card>
@@ -314,9 +292,7 @@ export default function VpsDetail() {
 
       {tab === 'Storage' && (
         <Card>
-          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
-            <HardDrive className="h-4 w-4 shrink-0" /> Storage
-          </h3>
+          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white"><HardDrive className="h-4 w-4 text-electric" /> Storage</h3>
           <dl className="grid gap-3 sm:grid-cols-2">
             <Info label="Disk capacity" value={`${vps.disk_gb} GB qcow2`} />
             <Info label="Used (guest-reported)" value={stats?.disk_used_bytes ? formatBytes(stats.disk_used_bytes) : 'Unavailable'} />
@@ -335,14 +311,14 @@ export default function VpsDetail() {
             )}
           </div>
           {backups.length === 0 ? (
-            <p className="text-sm text-secondary">No backups yet. Create one from the Backups page.</p>
+            <p className="text-sm text-muted">No backups yet. Create one from the Backups page.</p>
           ) : (
             <div className="space-y-2">
               {backups.map((b) => (
-                <div key={b.id} className="flex items-center justify-between rounded-lg border border-color bg-card p-3 text-sm">
+                <div key={b.id} className="flex items-center justify-between rounded-lg border border-line bg-input p-3 text-sm">
                   <div>
                     <p className="font-medium text-white">{b.backup_type} · {b.snapshot_name || b.path}</p>
-                    <p className="text-xs text-secondary">{formatDate(b.created_at)} · {formatBytes(b.size_bytes)}</p>
+                    <p className="text-xs text-muted">{formatDate(b.created_at)} · {formatBytes(b.size_bytes)}</p>
                   </div>
                   <Badge value={b.status} />
                 </div>
@@ -357,19 +333,17 @@ export default function VpsDetail() {
           <h3 className="mb-4 font-semibold text-white">Task history and logs</h3>
           <div className="space-y-3">
             {tasks.map((t) => (
-              <div key={t.id} className="rounded-lg border border-color bg-card p-4">
+              <div key={t.id} className="rounded-lg border border-line bg-input p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-white">
-                    {titleCase(t.task_type.replace(/_/g, ' '))} <span className="text-secondary">#{t.id}</span>
-                  </span>
+                  <span className="text-sm font-semibold text-white">{titleCase(t.task_type.replace(/_/g, ' '))} <span className="text-muted">#{t.id}</span></span>
                   <Badge value={t.status} />
                 </div>
-                <p className="mt-1 text-xs text-secondary">Created {formatDate(t.created_at)}</p>
-                {t.logs && <pre className="mt-3 max-h-48 overflow-auto rounded-lg bg-card p-3 font-mono text-xs text-secondary">{t.logs}</pre>}
-                {t.error && <p className="mt-2 text-xs text-secondary">{t.error}</p>}
+                <p className="mt-1 text-xs text-muted">Created {formatDate(t.created_at)}</p>
+                {t.logs && <pre className="mt-3 max-h-48 overflow-auto rounded-lg bg-black p-3 font-mono text-xs text-muted">{t.logs}</pre>}
+                {t.error && <p className="mt-2 text-xs text-danger">{t.error}</p>}
               </div>
             ))}
-            {tasks.length === 0 && <p className="text-sm text-secondary">No activity yet</p>}
+            {tasks.length === 0 && <p className="text-sm text-muted">No activity yet</p>}
           </div>
         </Card>
       )}
@@ -377,27 +351,30 @@ export default function VpsDetail() {
       <ConfirmDialog
         open={confirmDelete}
         title="Delete this VPS"
+        danger
         confirmLabel="Delete forever"
         loading={busy}
         onClose={() => setConfirmDelete(false)}
         onConfirm={remove}
         message={
           <>
-            Permanently destroy <strong>{vps.name}</strong>, its libvirt domain and virtual disks. This cannot be undone.
+            Permanently destroy <strong className="text-electric">{vps.name}</strong>, its libvirt domain and virtual disks.
+            This cannot be undone.
           </>
         }
       />
       <ConfirmDialog
         open={confirmReinstall}
         title="Reinstall operating system"
+        danger
         confirmLabel="Reinstall now"
         loading={busy}
         onClose={() => setConfirmReinstall(false)}
         onConfirm={reinstall}
         message={
           <>
-            The existing disk of <strong>{vps.name}</strong> will be replaced with a fresh image from{' '}
-            <strong>{vps.template_name}</strong>. All data on the disk is lost.
+            The existing disk of <strong className="text-electric">{vps.name}</strong> will be replaced with a fresh image
+            from <strong>{vps.template_name}</strong>. All data on the disk is lost.
           </>
         }
       />
@@ -407,8 +384,8 @@ export default function VpsDetail() {
 
 function Info({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div className="rounded-lg border border-color bg-card p-3">
-      <dt className="text-xs uppercase tracking-wider text-secondary">{label}</dt>
+    <div className="rounded-lg border border-line bg-input p-3">
+      <dt className="text-xs uppercase tracking-wider text-muted">{label}</dt>
       <dd className={`mt-1 break-all text-sm font-medium text-white ${mono ? 'font-mono' : ''}`}>{value}</dd>
     </div>
   )
