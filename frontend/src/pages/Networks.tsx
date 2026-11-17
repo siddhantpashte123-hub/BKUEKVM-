@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Globe, Network as NetworkIcon } from 'lucide-react'
+import { Network as NetworkIcon } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import type { NetworkInfo } from '../lib/types'
 import { Badge, Card, EmptyState, ErrorState, LoadingState, PageHeader, TableShell } from '../components/ui'
@@ -54,48 +54,37 @@ export default function Networks() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="flex items-center gap-2 font-bold text-white">
-                    <NetworkIcon className="h-4 w-4 text-electric" /> {n.name}
+                    <NetworkIcon className="h-4 w-4 shrink-0" /> {n.name}
                   </h3>
-                  <p className="mt-1 font-mono text-xs text-muted">
+                  <p className="mt-1 font-mono text-xs text-secondary">
                     bridge {n.bridge} · {n.network_type} · {n.subnet || 'no subnet'}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge value={n.dhcp_enabled ? 'active' : 'offline'} />
-                  <span className="rounded-full border border-line px-2.5 py-0.5 text-xs text-muted">
-                    <Globe className="mr-1 inline h-3 w-3" />
+                  <span className="rounded-lg border border-color px-2.5 py-0.5 text-xs text-secondary">
                     {n.dhcp_enabled ? 'DHCP enabled' : 'Static only'}
                   </span>
                 </div>
               </div>
 
-              <div className="mt-4 overflow-x-auto">
-                <table className="table-base min-w-[480px]">
-                  <thead>
+              <div className="mt-4">
+                <TableShell headers={['IP address', 'MAC', 'Type', 'Assigned VPS']}>
+                  {(allocations[n.id] ?? []).length === 0 ? (
                     <tr>
-                      <th>IP address</th>
-                      <th>MAC</th>
-                      <th>Type</th>
-                      <th>Assigned VPS</th>
+                      <td colSpan={4} className="text-sm text-secondary">No IP allocations recorded</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {(allocations[n.id] ?? []).length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="text-sm text-muted">No IP allocations recorded</td>
+                  ) : (
+                    allocations[n.id].map((a) => (
+                      <tr key={a.id}>
+                        <td className="font-mono text-xs text-white">{a.address}</td>
+                        <td className="font-mono text-xs text-secondary">{a.mac_address}</td>
+                        <td className="uppercase text-secondary">{a.allocation_type}</td>
+                        <td className="text-white">{a.vps_name ?? '—'}</td>
                       </tr>
-                    ) : (
-                      allocations[n.id].map((a) => (
-                        <tr key={a.id}>
-                          <td className="font-mono text-xs text-white">{a.address}</td>
-                          <td className="font-mono text-xs text-muted">{a.mac_address}</td>
-                          <td className="uppercase text-muted">{a.allocation_type}</td>
-                          <td className="text-white">{a.vps_name ?? '—'}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                    ))
+                  )}
+                </TableShell>
               </div>
             </Card>
           ))}
