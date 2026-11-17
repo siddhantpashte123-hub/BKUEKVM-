@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Save, Settings as SettingsIcon } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
-import { Button, Card, ErrorState, Input, LoadingState, PageHeader } from '../components/ui'
+import { Button, Card, ErrorState, Input, LoadingState, PageHeader, Textarea } from '../components/ui'
 import { useAuth } from '../lib/auth'
 
 interface SettingsResponse {
@@ -56,11 +56,13 @@ export default function SettingsPage() {
     <div className="space-y-6">
       <PageHeader title="Settings" description="Panel branding, runtime environment and service configuration" />
 
-      {saved && <div className="rounded-lg border border-success/40 bg-success/10 px-4 py-2.5 text-sm text-success">{saved}</div>}
+      {saved && <div className="rounded-lg border border-color bg-card px-4 py-2.5 text-sm text-secondary">{saved}</div>}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white"><SettingsIcon className="h-4 w-4 text-electric" /> Branding</h3>
+          <h3 className="mb-4 flex items-center gap-2 font-semibold text-white">
+            <SettingsIcon className="h-4 w-4 shrink-0" /> Branding
+          </h3>
           <div className="space-y-4">
             <Input label="Application name" value="BLUEKVM PANNEL" disabled />
             <Input label="Tagline" value={tagline} onChange={(e) => setTagline(e.target.value)} />
@@ -80,7 +82,7 @@ export default function SettingsPage() {
             <Env label="Secure cookies" value={data.environment.cookie_secure ? 'enabled' : 'disabled (HTTP)'} />
             <Env label="CSRF protection" value={data.environment.csrf_enabled ? 'enabled' : 'disabled'} />
           </dl>
-          <p className="mt-4 text-xs text-muted">
+          <p className="mt-4 text-xs text-secondary">
             Port and TLS are configured through environment variables and the systemd/nginx deployment, never via the
             browser. Secrets are not readable from this API.
           </p>
@@ -98,10 +100,7 @@ export default function SettingsPage() {
             <Button variant="secondary" disabled={!can('settings:manage')} onClick={() => save('audit_retention_days', retention)}>
               <Save className="h-4 w-4" /> Save retention
             </Button>
-            <div>
-              <label className="label-base">Panel notes</label>
-              <textarea className="input-base min-h-[100px]" value={notes} onChange={(e) => setNotes(e.target.value)} />
-            </div>
+            <Textarea label="Panel notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
             <Button variant="secondary" disabled={!can('settings:manage')} onClick={() => save('panel_notes', notes)}>
               <Save className="h-4 w-4" /> Save notes
             </Button>
@@ -110,7 +109,7 @@ export default function SettingsPage() {
 
         <Card>
           <h3 className="mb-4 font-semibold text-white">Security posture</h3>
-          <ul className="space-y-2 text-sm text-muted">
+          <ul className="space-y-2 text-sm text-secondary">
             <li>• Passwords hashed with bcrypt; no default passwords are shipped</li>
             <li>• Opaque session tokens stored only as SHA-256 hashes</li>
             <li>• Login rate limiting and double-submit CSRF tokens</li>
@@ -126,8 +125,8 @@ export default function SettingsPage() {
 
 function Env({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between border-b border-line/60 pb-2">
-      <dt className="text-muted">{label}</dt>
+    <div className="border-b border-color pb-2 flex items-center justify-between">
+      <dt className="text-secondary">{label}</dt>
       <dd className="font-medium capitalize text-white">{value}</dd>
     </div>
   )

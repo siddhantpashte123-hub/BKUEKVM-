@@ -3,7 +3,7 @@ import { Plus, Trash2, UserX } from 'lucide-react'
 import { api, ApiError } from '../lib/api'
 import { formatDate } from '../lib/format'
 import type { Role, User } from '../lib/types'
-import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Input, LoadingState, Modal, PageHeader, Select } from '../components/ui'
+import { Badge, Button, Card, ConfirmDialog, EmptyState, ErrorState, Input, LoadingState, Modal, PageHeader, Select, TableShell } from '../components/ui'
 import { useAuth } from '../lib/auth'
 
 export default function Users() {
@@ -94,9 +94,9 @@ export default function Users() {
         <h3 className="mb-3 font-semibold text-white">Roles</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {roles.map((r) => (
-            <div key={r.id} className="rounded-lg border border-line bg-input p-3">
+            <div key={r.id} className="rounded-lg border border-color bg-card p-3">
               <p className="text-sm font-semibold text-white">{r.name}</p>
-              <p className="mt-1 text-xs text-muted">
+              <p className="mt-1 text-xs text-secondary">
                 {r.permissions.includes('*') ? 'Full access (wildcard)' : `${r.permissions.length} permissions`}
               </p>
             </div>
@@ -107,52 +107,39 @@ export default function Users() {
       {users.length === 0 ? (
         <EmptyState title="No users" />
       ) : (
-        <div className="card-base overflow-x-auto">
-          <table className="table-base min-w-[720px]">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Last login</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    <p className="font-semibold text-white">
-                      {u.username}
-                      {u.is_superuser && <span className="ml-2 rounded border border-electric/50 px-1.5 py-0.5 text-[10px] uppercase text-electric">super</span>}
-                    </p>
-                    <p className="text-xs text-muted">{u.email}</p>
-                  </td>
-                  <td className="text-muted">{roles.find((r) => r.id === u.role_id)?.name ?? u.role_id}</td>
-                  <td>
-                    <Badge value={u.is_active ? 'active' : 'offline'} />
-                  </td>
-                  <td className="text-xs text-muted">{formatDate(u.last_login_at)}</td>
-                  <td>
-                    <div className="flex gap-1">
-                      <Button variant="ghost" className="px-2 py-1.5 text-xs" onClick={() => revokeSessions(u)}>
-                        <UserX className="h-3.5 w-3.5" /> Revoke sessions
-                      </Button>
-                      <Button variant="ghost" className="px-2 py-1.5 text-xs" onClick={() => toggleActive(u)}>
-                        {u.is_active ? 'Disable' : 'Enable'}
-                      </Button>
-                      {!u.is_superuser && u.id !== currentUser?.id && (
-                        <Button variant="ghost" className="px-2 py-1.5 text-xs hover:text-danger" onClick={() => setToDelete(u)}>
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <TableShell headers={['User', 'Role', 'Status', 'Last login', 'Actions']}>
+          {users.map((u) => (
+            <tr key={u.id}>
+              <td>
+                <p className="font-semibold text-white">
+                  {u.username}
+                  {u.is_superuser && <span className="ml-2 rounded-lg border border-color px-1.5 py-0.5 text-[10px] uppercase text-secondary">super</span>}
+                </p>
+                <p className="text-xs text-secondary">{u.email}</p>
+              </td>
+              <td className="text-secondary">{roles.find((r) => r.id === u.role_id)?.name ?? u.role_id}</td>
+              <td>
+                <Badge value={u.is_active ? 'active' : 'offline'} />
+              </td>
+              <td className="text-xs text-secondary">{formatDate(u.last_login_at)}</td>
+              <td>
+                <div className="flex gap-1">
+                  <Button variant="ghost" className="px-2 py-1.5 text-xs" onClick={() => revokeSessions(u)}>
+                    <UserX className="h-3.5 w-3.5" /> Revoke sessions
+                  </Button>
+                  <Button variant="ghost" className="px-2 py-1.5 text-xs" onClick={() => toggleActive(u)}>
+                    {u.is_active ? 'Disable' : 'Enable'}
+                  </Button>
+                  {!u.is_superuser && u.id !== currentUser?.id && (
+                    <Button variant="ghost" className="px-2 py-1.5 text-xs" onClick={() => setToDelete(u)}>
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </TableShell>
       )}
 
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="Create user">
@@ -173,12 +160,11 @@ export default function Users() {
       <ConfirmDialog
         open={!!toDelete}
         title="Delete user"
-        danger
         confirmLabel="Delete"
         loading={busy}
         onClose={() => setToDelete(null)}
         onConfirm={remove}
-        message={<>Delete user <strong className="text-electric">{toDelete?.username}</strong>? Their audit history is retained.</>}
+        message={<>Delete user <strong>{toDelete?.username}</strong>? Their audit history is retained.</>}
       />
     </div>
   )

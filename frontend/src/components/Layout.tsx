@@ -37,13 +37,15 @@ const NAV = [
 
 function Brand() {
   return (
-    <div className="flex items-center gap-3 px-5 py-5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-primary/50 bg-primary/10 text-lg font-extrabold text-electric shadow-glow">
+    <div className="flex items-center gap-3 px-6 py-6">
+      <div className="flex h-9 w-9 items-center justify-center rounded-lg border bg-card text-lg font-extrabold text-white">
         B
       </div>
       <div className="leading-tight">
         <p className="text-sm font-extrabold tracking-wider text-white">BLUEKVM</p>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.25em] text-electric">Pannel</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted">
+          Panel
+        </p>
       </div>
     </div>
   )
@@ -52,10 +54,18 @@ function Brand() {
 function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   const { can } = useAuth()
   const required: Record<string, string> = {
-    '/': 'monitoring:read', '/vps': 'vps:read', '/vps/create': 'vps:manage',
-    '/nodes': 'node:read', '/templates': 'template:read', '/network': 'network:read',
-    '/storage': 'storage:read', '/backups': 'backup:read', '/users': 'user:read',
-    '/logs': 'audit:read', '/monitoring': 'monitoring:read', '/settings': 'settings:read',
+    '/': 'monitoring:read',
+    '/vps': 'vps:read',
+    '/vps/create': 'vps:manage',
+    '/nodes': 'node:read',
+    '/templates': 'template:read',
+    '/network': 'network:read',
+    '/storage': 'storage:read',
+    '/backups': 'backup:read',
+    '/users': 'user:read',
+    '/logs': 'audit:read',
+    '/monitoring': 'monitoring:read',
+    '/settings': 'settings:read',
   }
   return (
     <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2">
@@ -67,16 +77,21 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
           onClick={onNavigate}
           className={({ isActive }) =>
             clsx(
-              'group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
+              'group flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-medium transition-colors duration-150',
               isActive
-                ? 'bg-primary/15 text-white shadow-[inset_2px_0_0_0_#008CFF]'
-                : 'text-muted hover:bg-white/5 hover:text-white',
+                ? 'border-transparent bg-card text-white'
+                : 'border-transparent text-muted hover:bg-card hover:text-white',
             )
           }
         >
           {({ isActive }) => (
             <>
-              <Icon className={clsx('h-4.5 w-4.5 h-[18px] w-[18px]', isActive ? 'text-electric' : 'text-muted group-hover:text-white')} />
+              <Icon
+                className={clsx(
+                  'h-4.5 w-4.5 shrink-0',
+                  isActive ? 'text-white' : 'text-muted group-hover:text-white',
+                )}
+              />
               <span>{label}</span>
             </>
           )}
@@ -86,10 +101,38 @@ function NavItems({ onNavigate }: { onNavigate?: () => void }) {
   )
 }
 
+function UserMenu({ user, onLogout }: { user: { username?: string; email?: string } | null; onLogout: () => void }) {
+  const initials = user?.username
+    ? user.username
+        .split(' ')
+        .map((part) => part[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : 'UU'
+
+  return (
+    <div className="border-t border-color pt-6 pb-6 px-6 flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <p className="truncate text-sm font-semibold text-white">{user?.username ?? 'User'}</p>
+      </div>
+      <p className="truncate text-xs text-muted">{user?.email ?? ''}</p>
+      <button
+        onClick={onLogout}
+        className="btn btn-ghost w-full justify-start"
+      >
+        <LogOut className="h-4 w-4 shrink-0" /> Sign out
+      </button>
+    </div>
+  )
+}
+
 export default function Layout({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth()
+  const { user, logout, loading } = useAuth()
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  if (loading) return null
 
   const handleLogout = async () => {
     await logout()
@@ -97,75 +140,64 @@ export default function Layout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-screen bg-black">
+    <div className="flex min-h-screen bg-main">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-line bg-sidebar lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 w-64 flex-col border-r border border-color bg-sidebar lg:flex">
         <Brand />
         <NavItems />
-        <div className="border-t border-line p-4">
-          <div className="mb-3 truncate">
-            <p className="text-sm font-semibold text-white">{user?.username}</p>
-            <p className="truncate text-xs text-muted">{user?.email}</p>
-          </div>
-          <ButtonLogout onClick={handleLogout} />
-        </div>
+        {user && <UserMenu user={user} onLogout={handleLogout} />}
       </aside>
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div className="absolute inset-0 bg-black/80" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-72 flex-col border-r border-line bg-sidebar animate-fade-in">
-            <div className="flex items-center justify-between">
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-main opacity-90 lg:hidden"
+            onClick={() => setMobileOpen(false)}
+          />
+          <aside className="fixed inset-y-0 left-0 z-50 w-72 flex-col border-r border border-color bg-sidebar lg:hidden">
+            <div className="flex items-center justify-between px-6 py-6">
               <Brand />
-              <button className="mr-4 text-muted hover:text-white" onClick={() => setMobileOpen(false)} aria-label="Close menu">
+              <button className="rounded-lg p-1.5 text-muted hover:bg-card hover:text-white" onClick={() => setMobileOpen(false)} aria-label="Close menu">
                 <X className="h-5 w-5" />
               </button>
             </div>
             <NavItems onNavigate={() => setMobileOpen(false)} />
-            <div className="border-t border-line p-4">
-              <ButtonLogout onClick={handleLogout} />
-            </div>
+            {user && <UserMenu user={user} onLogout={handleLogout} />}
           </aside>
-        </div>
+        </>
       )}
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line bg-panel/90 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 border-b border-color bg-sidebar px-4 sm:px-6">
           <button
-            className="rounded-lg border border-line p-2 text-muted hover:text-white lg:hidden"
+            className="rounded-lg border p-2 text-muted hover:text-white lg:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-white">BLUEKVM PANNEL</p>
-            <p className="text-xs text-muted">KVM Virtualization Management</p>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-white truncate">BLUEKVM Panel</p>
+            <p className="text-xs text-muted truncate">KVM Virtualization Management</p>
           </div>
-          <div className="hidden items-center gap-2 rounded-full border border-line bg-input px-3 py-1.5 sm:flex">
-            <span className="h-2 w-2 rounded-full bg-success animate-pulseglow" />
-            <span className="text-xs font-medium text-muted">System Online</span>
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-1.5 rounded-lg border px-2.5 py-1 sm:flex">
+              <span className="flex h-2 w-2 rounded-full border" />
+              <span className="text-xs font-medium text-muted">System Online</span>
+            </div>
+            <button className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm font-medium text-white hover:bg-card sm:ml-3">
+              {user?.username ? user.username.charAt(0).toUpperCase() : 'U'}
+              <span className="hidden sm:inline text-sm font-medium text-white">{user?.username}</span>
+            </button>
           </div>
         </header>
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
-        <footer className="border-t border-line px-6 py-4 text-xs text-muted">
-          BLUEKVM PANNEL — self-hosted KVM management
+        <main className="flex-1 px-6 py-6 sm:px-6 lg:px-8">{children}</main>
+        <footer className="border-t border-color bg-main px-6 py-4 sm:px-6 lg:px-8 text-xs text-muted">
+          BLUEKVM Panel — self-hosted KVM management
         </footer>
       </div>
     </div>
-  )
-}
-
-function ButtonLogout({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex w-full items-center gap-2 rounded-lg border border-line bg-input px-3 py-2 text-sm font-medium text-muted transition hover:border-danger/50 hover:text-danger"
-    >
-      <LogOut className="h-4 w-4" />
-      Sign out
-    </button>
   )
 }

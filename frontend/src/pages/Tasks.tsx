@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, ApiError } from '../lib/api'
 import { formatDate, titleCase } from '../lib/format'
 import type { Task } from '../lib/types'
-import { Badge, Card, EmptyState, ErrorState, LoadingState, PageHeader, ProgressBar } from '../components/ui'
+import { Badge, Card, EmptyState, ErrorState, LoadingState, PageHeader, ProgressBar, TableShell } from '../components/ui'
 
 export default function Tasks() {
   const [tasks, setTasks] = useState<Task[]>([])
@@ -31,7 +31,10 @@ export default function Tasks() {
 
   return (
     <div>
-      <PageHeader title="Background Tasks" description="Durable provisioning, lifecycle and backup jobs with timestamped step logs" />
+      <PageHeader
+        title="Background Tasks"
+        description="Durable provisioning, lifecycle and backup jobs with timestamped step logs"
+      />
       {error && <ErrorState message={error} onRetry={load} />}
 
       {tasks.length === 0 ? (
@@ -43,10 +46,10 @@ export default function Tasks() {
               <button className="flex w-full items-center justify-between gap-3 text-left" onClick={() => setOpen(open === task.id ? null : task.id)}>
                 <div>
                   <p className="font-semibold text-white">
-                    {titleCase(task.task_type.replace(/_/g, ' '))} <span className="text-muted">#{task.id}</span>
-                    {task.vps_id && <span className="ml-2 text-xs text-muted">VPS #{task.vps_id}</span>}
+                    {titleCase(task.task_type.replace(/_/g, ' '))} <span className="text-secondary">#{task.id}</span>
+                    {task.vps_id && <span className="ml-2 text-xs text-secondary">VPS #{task.vps_id}</span>}
                   </p>
-                  <p className="mt-1 text-xs text-muted">{formatDate(task.created_at)}</p>
+                  <p className="mt-1 text-xs text-secondary">{formatDate(task.created_at)}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="hidden w-40 sm:block"><ProgressBar percent={task.progress} /></div>
@@ -55,22 +58,20 @@ export default function Tasks() {
               </button>
 
               {open === task.id && (
-                <div className="mt-4 space-y-3 border-t border-line pt-4">
+                <div className="mt-4 space-y-3 border-t border-color pt-4">
                   <div className="grid gap-2 sm:grid-cols-2">
                     {task.steps.map((step, i) => (
-                      <div key={i} className="rounded-lg border border-line bg-input p-2.5 text-xs">
+                      <div key={i} className="rounded-lg border border-color bg-card p-2.5 text-xs">
                         <div className="flex items-center justify-between">
                           <span className="font-medium text-white">{step.name}</span>
                           <Badge value={step.status} />
                         </div>
-                        {step.detail && <p className="mt-1 break-all text-muted">{step.detail}</p>}
+                        {step.detail && <p className="mt-1 break-all text-secondary">{step.detail}</p>}
                       </div>
                     ))}
                   </div>
-                  {task.logs && (
-                    <pre className="max-h-64 overflow-auto rounded-lg bg-black p-3 font-mono text-xs text-muted">{task.logs}</pre>
-                  )}
-                  {task.error && <p className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-xs text-danger">{task.error}</p>}
+                  {task.logs && <pre className="max-h-64 overflow-auto rounded-lg bg-card p-3 font-mono text-xs text-secondary">{task.logs}</pre>}
+                  {task.error && <p className="rounded-lg border border-color bg-card p-3 text-xs text-secondary">{task.error}</p>}
                 </div>
               )}
             </Card>

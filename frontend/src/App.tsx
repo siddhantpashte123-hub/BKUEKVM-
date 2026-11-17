@@ -24,7 +24,7 @@ function Protected({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   if (loading)
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black">
+      <div className="flex min-h-screen items-center justify-center bg-main">
         <LoadingState label="Authenticating…" />
       </div>
     )
